@@ -87,22 +87,18 @@
   <!-- =====================================================================
        CONFIGURACIÓN
        - Las carpetas libres y bloqueadas se manejan desde el panel Admin.
-       - La contraseña del admin NO está escrita aquí: solo una huella
-         (PBKDF2-SHA256, 600.000 vueltas) que no permite leerla.
-       - Las carpetas bloqueadas se suben CIFRADAS (AES-256) en /privado.
+       - La música está en tu Google Drive (carpeta MAUZI MÚSICA).
+       - Las claves y enlaces se crean en Admin y las guarda tu Apps Script,
+         no este archivo. Tu contraseña de admin tampoco está aquí.
        ===================================================================== -->
   <script>
     window.FOLDERBEATS_CONFIG = {
       githubUser: 'rulymauzi-byte',  // Tu usuario de GitHub
       githubRepo: 'Mauzi-Música-',   // Tu repositorio
       branch: 'main',            // Rama principal ('main' o 'master')
-      musicRoot: 'musica',       // Carpeta donde pones TODA tu música (libre y la que vas a bloquear)
-      siteUrl: 'https://rulymauzi-byte.github.io/Mauzi-Música-/', // Dirección pública (para los enlaces de cada carpeta)
-      admin: {
-        salt: 'ZGQw+6WrJmt8VV047CnV1Q==',
-        iter: 600000,
-        hash: '6TLlKQ52T3rBROp5Afi4ghTwvVBRiqgKU1mgyUS9kQI='
-      }
+      scriptUrl: 'https://script.google.com/macros/s/AKfycbzpwv5pE0FI-z3ioDZtGM8ksZTh4To-e8v_iluYOPa3lUnUbTeHnd-fMLk0vnPkhgTd/exec', // Dirección de tu Apps Script de Google Drive (termina en /exec)
+      musicRoot: 'musica',
+      siteUrl: 'https://rulymauzi-byte.github.io/Mauzi-Música-/' // Dirección pública (para los enlaces de cada carpeta)
     };
   </script>
 
@@ -136,10 +132,7 @@
           <p id="lockErrorMsg" class="hidden text-xs text-red-400 mt-1.5 font-medium">Contraseña incorrecta. Inténtalo de nuevo.</p>
         </div>
 
-        <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
-          <input id="rememberUnlockChk" type="checkbox" checked class="rounded border-blue-500/40 bg-abyss-850 text-orange-500 focus:ring-orange-500" />
-          <span>Recordar desbloqueo en este dispositivo</span>
-        </label>
+        <p class="text-[11px] text-slate-400">Solo la pides una vez: en este aparato ya no se volverá a pedir.</p>
 
         <button type="submit" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-400 hover:to-red-500 text-white font-semibold text-sm transition shadow-lg shadow-red-600/25">
           Desbloquear carpeta
@@ -342,7 +335,8 @@
             <i data-lucide="skip-back" class="w-5 h-5 fill-current"></i>
           </button>
           <button id="playPauseBtn" type="button" class="w-10 h-10 rounded-full bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-400 hover:to-red-500 text-white flex items-center justify-center transition shadow-lg shadow-red-600/30" title="Reproducir / Pausar">
-            <i id="playPauseIcon" data-lucide="play" class="w-5 h-5 fill-current ml-0.5"></i>
+            <span id="playIconWrap" class="inline-flex"><i data-lucide="play" class="w-5 h-5 fill-current ml-0.5"></i></span>
+            <span id="pauseIconWrap" class="inline-flex" style="display:none"><i data-lucide="pause" class="w-5 h-5 fill-current"></i></span>
           </button>
           <button id="nextBtn" type="button" class="p-1.5 rounded-lg text-slate-300 hover:text-white transition" title="Siguiente">
             <i data-lucide="skip-forward" class="w-5 h-5 fill-current"></i>
@@ -363,7 +357,8 @@
       <!-- Volume -->
       <div class="hidden md:flex w-1/3 items-center justify-end gap-2">
         <button id="muteBtn" type="button" class="p-1.5 rounded-lg text-slate-400 hover:text-white transition" title="Silenciar">
-          <i id="volumeIcon" data-lucide="volume-2" class="w-4 h-4"></i>
+          <span id="volOnWrap" class="inline-flex"><i data-lucide="volume-2" class="w-4 h-4"></i></span>
+          <span id="volOffWrap" class="inline-flex" style="display:none"><i data-lucide="volume-x" class="w-4 h-4"></i></span>
         </button>
         <input id="volumeRange" type="range" min="0" max="1" step="0.01" value="0.85" class="player-range w-24" aria-label="Volumen" />
       </div>
@@ -401,26 +396,9 @@
 
       <!-- Paso: trabajar -->
       <div id="adminWork" class="hidden p-4 sm:p-5 space-y-4">
-        <!-- Conectar con GitHub (una sola vez por aparato) -->
-        <div id="ghTokenBox" class="hidden space-y-2.5">
-          <h4 class="text-sm font-semibold text-white">Conectar con tu GitHub (una sola vez en este aparato)</h4>
-          <ol class="text-xs text-slate-300 space-y-1 list-decimal pl-4">
-            <li>Abre <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener" class="text-orange-400 underline">github.com/settings/personal-access-tokens/new</a></li>
-            <li><b>Token name:</b> Mauzi Musica. <b>Expiration:</b> la más larga que permita.</li>
-            <li><b>Repository access:</b> Only select repositories → <b>Mauzi-Música-</b></li>
-            <li><b>Permissions → Repository permissions → Contents:</b> Read and write</li>
-            <li>Toca <b>Generate token</b>, cópialo (empieza con <code>github_pat_</code>) y pégalo aquí:</li>
-          </ol>
-          <input id="ghTokenInput" type="password" autocomplete="off" placeholder="github_pat_..." class="w-full bg-abyss-850 border border-blue-500/30 rounded-xl px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500" />
-          <button id="ghTokenSaveBtn" type="button" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-red-600 text-white font-semibold text-sm">Conectar</button>
-          <p class="text-[11px] text-slate-500">Se guarda solo en este aparato, cifrado con tu contraseña de admin. Nunca se sube a GitHub.</p>
-        </div>
-
-        <!-- Conectado -->
-        <div id="ghConnected" class="hidden space-y-4">
-          <div class="flex items-center justify-between gap-2 text-xs">
-            <span class="inline-flex items-center gap-1.5 text-emerald-300"><i data-lucide="check-circle-2" class="w-4 h-4"></i><span id="ghRepoLabel">Conectado</span></span>
-            <button id="ghForgetBtn" type="button" class="text-slate-400 hover:text-red-300">Desconectar este aparato</button>
+        <div id="ghConnected" class="space-y-4">
+          <div class="flex items-center gap-1.5 text-xs text-emerald-300">
+            <i data-lucide="check-circle-2" class="w-4 h-4"></i><span id="ghRepoLabel">Conectado a tu Google Drive</span>
           </div>
 
           <div class="flex flex-wrap gap-2">
@@ -447,7 +425,7 @@
 
           <div class="space-y-1.5">
             <h4 class="text-sm font-semibold text-white">Tus carpetas</h4>
-            <p class="text-[11px] text-slate-400">Pon contraseña a una carpeta y copia su enlace. Quien lo reciba solo verá esa carpeta y sus subcarpetas.</p>
+            <p class="text-[11px] text-slate-400">Las carpetas vienen de tu Google Drive (carpeta MAUZI MÚSICA). Pon contraseña a una y copia su enlace: quien lo reciba solo verá esa carpeta y sus subcarpetas.</p>
             <div id="adminFolderList" class="space-y-1.5"></div>
           </div>
         </div>
@@ -494,7 +472,7 @@
         activeFolder: 'ALL',  // 'ALL' | 'FAVORITES' | folderPath
         expandedFolders: new Set(),
         lib: null,
-        lockedGroups: [],     // carpetas bloqueadas de biblioteca.json { id, nombre, salt, iter, iv, datos, unlocked, key }
+        lockedGroups: [],     // carpetas con clave { id, nombre, visible, unlocked, token }
         pendingUnlockFolder: null,
         searchQuery: '',
         currentTrackId: null,
@@ -519,7 +497,6 @@
       const unlockForm = document.getElementById('unlockForm');
       const lockPasswordInput = document.getElementById('lockPasswordInput');
       const lockErrorMsg = document.getElementById('lockErrorMsg');
-      const rememberUnlockChk = document.getElementById('rememberUnlockChk');
       const togglePwdVisibilityBtn = document.getElementById('togglePwdVisibilityBtn');
       const togglePwdIcon = document.getElementById('togglePwdIcon');
 
@@ -536,7 +513,8 @@
       const folderInputEl = document.getElementById('folderInput');
       const filesInputEl = document.getElementById('filesInput');
       const playPauseBtn = document.getElementById('playPauseBtn');
-      const playPauseIcon = document.getElementById('playPauseIcon');
+      const playIconWrap = document.getElementById('playIconWrap');
+      const pauseIconWrap = document.getElementById('pauseIconWrap');
       const prevBtn = document.getElementById('prevBtn');
       const nextBtn = document.getElementById('nextBtn');
       const shuffleBtn = document.getElementById('shuffleBtn');
@@ -547,7 +525,12 @@
       const durationLabel = document.getElementById('durationLabel');
       const volumeRange = document.getElementById('volumeRange');
       const muteBtn = document.getElementById('muteBtn');
-      const volumeIcon = document.getElementById('volumeIcon');
+      const volOnWrap = document.getElementById('volOnWrap');
+      const volOffWrap = document.getElementById('volOffWrap');
+      function showMuteIcon(muted) {
+        volOnWrap.style.display = muted ? 'none' : '';
+        volOffWrap.style.display = muted ? '' : 'none';
+      }
       const nowPlayingTitle = document.getElementById('nowPlayingTitle');
       const nowPlayingFolder = document.getElementById('nowPlayingFolder');
       const nowPlayingFavBtn = document.getElementById('nowPlayingFavBtn');
@@ -629,78 +612,81 @@
         return Boolean(window.crypto && crypto.subtle);
       }
 
-      // ===================== Carpetas bloqueadas (visitantes) =====================
-      function loadSavedKeys() {
-        try { return JSON.parse(localStorage.getItem(KEYS_STORAGE_KEY) || '{}') || {}; } catch (e) { return {}; }
-      }
-      function saveKeyForGroup(group, rawKey) {
+      // ===================== Google Drive: conexión =====================
+      function scriptUrl() { return ((window.FOLDERBEATS_CONFIG || {}).scriptUrl || '').trim(); }
+      async function api(accion, datos = {}) {
+        const url = scriptUrl();
+        if (!url) { const e = new Error('Falta conectar Google Drive (dirección del script).'); e.server = true; throw e; }
+        let res;
         try {
-          const all = loadSavedKeys();
-          all[group.id] = { salt: group.salt, k: toB64(rawKey) };
-          localStorage.setItem(KEYS_STORAGE_KEY, JSON.stringify(all));
-        } catch (e) {}
+          res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ accion, ...datos }), redirect: 'follow' });
+        } catch (e) { const er = new Error('Sin conexión a internet.'); er.offline = true; throw er; }
+        let j;
+        try { j = await res.json(); } catch (e) { throw new Error('Google no respondió bien. Intenta de nuevo.'); }
+        if (!j.ok) { const er = new Error(j.error || 'Error'); er.server = true; er.clave = !!j.clave; er.admin = !!j.admin; throw er; }
+        return j;
       }
+      const DATA_CACHE = 'folderbeats_cache_v5_';
+      function cacheGet(k) { try { return JSON.parse(localStorage.getItem(DATA_CACHE + k) || 'null'); } catch (e) { return null; } }
+      function cacheSet(k, v) { try { localStorage.setItem(DATA_CACHE + k, JSON.stringify(v)); } catch (e) {} }
+
+      // ===================== Carpetas con clave (visitantes) =====================
+      // Al poner la clave una vez, el aparato guarda un "pase" y ya no la vuelve a pedir.
+      const PASES_KEY = 'folderbeats_pases_v5';
+      function loadPases() { try { return JSON.parse(localStorage.getItem(PASES_KEY) || '{}') || {}; } catch (e) { return {}; } }
+      function savePase(id, token) { try { const p = loadPases(); p[id] = token; localStorage.setItem(PASES_KEY, JSON.stringify(p)); } catch (e) {} }
+      function dropPase(id) { try { const p = loadPases(); delete p[id]; localStorage.setItem(PASES_KEY, JSON.stringify(p)); } catch (e) {} }
 
       function findGroupForFolder(folderPath) {
         if (!folderPath || folderPath === 'ALL' || folderPath === 'FAVORITES') return null;
-        return state.lockedGroups.find(g => g.visible && (folderPath === g.nombre || folderPath.startsWith(g.nombre + '/'))) || null;
+        return state.lockedGroups.find(g => g.visible && g.nombre && (folderPath === g.nombre || folderPath.startsWith(g.nombre + '/'))) || null;
       }
       function isFolderCurrentlyLocked(folderPath) {
         const g = findGroupForFolder(folderPath);
         return Boolean(g && !g.unlocked);
       }
 
-      // Intenta abrir una carpeta bloqueada con una llave. Devuelve true si la llave es correcta.
-      async function unlockGroupWithRawKey(group, rawKey) {
-        try {
-          // La clave de la carpeta abre la llave de los datos (así cambiar la clave no obliga a volver a subir todo)
-          const pwdKey = await importAesKey(rawKey);
-          const key = group.wkey
-            ? await importAesKey(await aesDecrypt(pwdKey, fromB64(group.wiv), fromB64(group.wkey)))
-            : pwdKey;
-          const plain = await aesDecrypt(key, fromB64(group.iv), fromB64(group.datos));
-          const list = JSON.parse(TD.decode(plain));
-          group.key = key;
-          group.unlocked = true;
-          setTimeout(markCachedTracks, 0);
-          list.forEach(item => {
-            const id = `enc-${item.file}`;
-            if (state.tracks.some(t => t.id === id)) return;
-            state.tracks.push({
-              id,
-              title: item.title,
-              folder: item.folder,
-              url: null,
-              remoteUrl: `./privado/${item.file}.bin`,
-              enc: { file: item.file, iv: item.iv, type: item.type || '' },
-              groupId: group.id,
-              duration: item.duration || null,
-              isLocal: false,
-              isDemo: false,
-              cachedOffline: false,
-              relPath: ''
-            });
-          });
-          return true;
-        } catch (e) {
-          return false;
-        }
+      function driveTrack(c, groupId) {
+        return {
+          id: `d-${c.id}`, fileId: c.id, title: c.title, folder: c.folder || 'General',
+          url: null, remoteUrl: 'drive', groupId: groupId || null,
+          duration: null, isLocal: false, isDemo: false, cachedOffline: false, relPath: ''
+        };
       }
-
-      async function restoreSavedUnlocks() {
-        const saved = loadSavedKeys();
-        for (const g of state.lockedGroups) {
-          if (!g.visible) continue;
-          const s = saved[g.id];
-          if (s && s.salt === g.salt && s.k) await unlockGroupWithRawKey(g, fromB64(s.k));
-        }
+      function setDriveTracks(canciones, label) {
+        revokeObjectUrls();
+        state.tracks = (canciones || []).map(c => driveTrack(c, null));
+        state.tracks.forEach(t => { const top = t.folder.split('/')[0]; if (top) state.expandedFolders.add(top); });
+        state.sourceLabel = label;
+        state.activeFolder = 'ALL';
+        state.currentTrackId = null;
+        updateOfflineCounter();
+        renderAll();
+        markCachedTracks();
+      }
+      function addGroupTracks(group, canciones) {
+        group.unlocked = true;
+        (canciones || []).forEach(c => {
+          if (!state.tracks.some(t => t.id === `d-${c.id}`)) state.tracks.push(driveTrack(c, group.id));
+        });
+        const top = (group.nombre || '').split('/')[0];
+        if (top) state.expandedFolders.add(top);
+        setTimeout(markCachedTracks, 0);
+      }
+      async function openGroup(group, cred) {
+        const r = await api('carpeta', { id: group.id, ...cred });
+        group.nombre = r.nombre;
+        group.token = r.token;
+        savePase(group.id, r.token);
+        cacheSet(`carpeta_${group.id}`, { nombre: r.nombre, canciones: r.canciones });
+        addGroupTracks(group, r.canciones);
       }
 
       function openFolderUnlockModal(folderPath) {
-        const g = findGroupForFolder(folderPath);
+        const g = findGroupForFolder(folderPath) || (LINK_ID ? state.lockedGroups[0] : null);
         if (!g || g.unlocked) return;
         state.pendingUnlockFolder = g.id;
-        unlockFolderNameLabel.textContent = g.nombre;
+        unlockFolderNameLabel.textContent = g.nombre || 'Carpeta protegida';
         lockErrorMsg.classList.add('hidden');
         lockPasswordInput.value = '';
         folderUnlockModal.classList.remove('hidden');
@@ -723,27 +709,18 @@
         e.preventDefault();
         const g = state.lockedGroups.find(x => x.id === state.pendingUnlockFolder);
         if (!g) return;
-        if (!cryptoAvailable()) {
-          showToast('Este navegador no permite descifrar. Abre la página con https.', 'error');
-          return;
-        }
         const submitBtn = unlockForm.querySelector('button[type="submit"]');
         submitBtn.disabled = true;
         lockErrorMsg.classList.add('hidden');
         try {
-          const raw = await folderRawKey(lockPasswordInput.value, g.salt, g.iter);
-          const ok = await unlockGroupWithRawKey(g, raw);
-          if (ok) {
-            if (rememberUnlockChk.checked) saveKeyForGroup(g, raw);
-            const top = g.nombre.split('/')[0];
-            if (top) state.expandedFolders.add(top);
-            state.activeFolder = g.nombre;
-            closeFolderUnlockModal();
-            renderAll();
-            showToast(`Carpeta "${g.nombre}" desbloqueada.`, 'success');
-          } else {
-            lockErrorMsg.classList.remove('hidden');
-          }
+          await openGroup(g, { clave: lockPasswordInput.value });
+          state.activeFolder = g.nombre;
+          closeFolderUnlockModal();
+          renderAll();
+          showToast(`Carpeta "${g.nombre}" abierta.`, 'success');
+        } catch (err) {
+          if (err.clave) lockErrorMsg.classList.remove('hidden');
+          else showToast(err.offline ? 'Necesitas internet para poner la clave la primera vez.' : err.message, 'error');
         } finally {
           submitBtn.disabled = false;
         }
@@ -1031,163 +1008,50 @@
       }
 
       async function tryAutoLoadHostedMusic() {
-        const cfg = window.FOLDERBEATS_CONFIG || {};
+        if (!scriptUrl()) return false;
         if (LINK_ID) {
-          // Enlace de una carpeta: solo se usa biblioteca.json, nunca la lista completa
+          // Enlace de una carpeta: solo esa carpeta existe para este usuario
+          const g = { id: LINK_ID, nombre: '', visible: true, unlocked: false, token: null };
+          state.lockedGroups = [g];
+          const cached = cacheGet(`carpeta_${LINK_ID}`);
+          if (cached) g.nombre = cached.nombre;
+          setDriveTracks([], 'Mi carpeta');
+          const pase = loadPases()[LINK_ID];
           try {
-            const res = await fetch('./biblioteca.json', { cache: 'no-store' });
-            if (res.ok) { await applyLibrary(await res.json()); return true; }
-          } catch (e) {}
-          return false;
-        }
-        let user = (cfg.githubUser || '').trim();
-        let repo = (cfg.githubRepo || '').trim();
-        const branch = (cfg.branch || 'main').trim();
-        const musicRoot = (cfg.musicRoot || 'musica').trim();
-
-        if (window.location.protocol.startsWith('http')) {
-          try {
-            const res = await fetch('./biblioteca.json', { cache: 'no-store' });
-            if (res.ok) {
-              const lib = await res.json();
-              if (lib && (Array.isArray(lib.libres) || Array.isArray(lib.bloqueadas))) {
-                await applyLibrary(lib);
-                return true;
-              }
+            if (pase) await openGroup(g, { token: pase });
+            else g.nombre = (await api('info', { id: LINK_ID })).nombre;
+          } catch (err) {
+            if (err.server && err.clave) {
+              dropPase(LINK_ID);                       // cambiaron la clave: se pide otra vez
+              try { g.nombre = (await api('info', { id: LINK_ID })).nombre; } catch (e) {}
+            } else if (err.server) {
+              showToast(err.message, 'error');
+              if (!g.nombre) return true;
+            } else if (pase && cached) {
+              addGroupTracks(g, cached.canciones);     // sin internet: lo que ya conoce
             }
-          } catch (e) {}
-          try {
-            const res = await fetch('./songs.json', { cache: 'no-store' });
-            if (res.ok) {
-              const data = await res.json();
-              if (Array.isArray(data) && data.length > 0) {
-                applyRemoteTracks(data, 'songs.json', './');
-                return true;
-              }
-            }
-          } catch (e) {}
-        }
-
-        if (!user && window.location.hostname.endsWith('.github.io')) {
-          user = window.location.hostname.split('.')[0];
-          const pathParts = window.location.pathname.split('/').filter(Boolean);
-          repo = pathParts[0] ? decodeURIComponent(pathParts[0]) : `${user}.github.io`;
-        }
-
-        if (user && repo) {
-          const ok = await fetchFromGitHubApi(user, repo, branch, musicRoot, true);
-          if (ok) return true;
-        }
-
-        return false;
-      }
-
-      async function applyLibrary(lib) {
-        state.lib = lib;
-        let groups = (lib.bloqueadas || []).map(g => ({ ...g, unlocked: false, key: null, visible: false }));
-        if (LINK_ID) {
-          // Solo la carpeta de este enlace; las demás no existen para este usuario
-          groups = groups.filter(g => g.id === LINK_ID);
-          groups.forEach(g => { g.visible = true; });
-          if (!groups.length) showToast('Este enlace no es válido o la carpeta ya no existe.', 'error');
-        }
-        state.lockedGroups = groups;
-        const items = (LINK_ID ? [] : (lib.libres || [])).map(t => ({
-          title: t.title,
-          folder: t.folder,
-          path: t.path,
-          url: './' + String(t.path).split('/').map(encodeURIComponent).join('/'),
-          duration: t.duration || null
-        }));
-        applyRemoteTracks(items, 'Mi biblioteca', './', true);
-        if (state.lockedGroups.length && cryptoAvailable()) {
-          await restoreSavedUnlocks();
-          state.lockedGroups.forEach(g => {
-            if (g.unlocked) { const top = g.nombre.split('/')[0]; if (top) state.expandedFolders.add(top); }
-          });
-        }
-        if (LINK_ID && state.lockedGroups[0]) {
-          const g = state.lockedGroups[0];
+          }
+          state.sourceLabel = g.nombre || 'Mi carpeta';
           state.activeFolder = g.unlocked ? g.nombre : 'ALL';
-          state.sourceLabel = g.nombre;
-          state.expandedFolders.add(g.nombre.split('/')[0]);
-          if (!g.unlocked) setTimeout(() => openFolderUnlockModal(g.nombre), 300);
+          renderAll();
+          if (!g.unlocked && g.nombre) setTimeout(() => openFolderUnlockModal(g.nombre), 300);
+          return true;
         }
-        renderAll();
-        const visible = getFilteredTracks();
-        if (visible.length > 0 && !state.currentTrackId) loadTrack(visible[0].id, false);
-      }
-
-      function applyRemoteTracks(items, label, basePrefix, deferFirstLoad = false) {
-        revokeObjectUrls();
-        state.tracks = items.map((item, idx) => {
-          const folder = (item.folder || 'General').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
-          const topFolder = folder.split('/')[0];
-          if (topFolder) state.expandedFolders.add(topFolder);
-          return {
-            id: `gh-${item.path || item.url || idx}`,
-            title: item.title || cleanTitle((item.path || '').split('/').pop() || `Pista ${idx + 1}`),
-            folder,
-            url: item.url || (basePrefix + encodeURI(item.path)),
-            remoteUrl: item.url || (basePrefix + encodeURI(item.path)),
-            duration: item.duration || null,
-            isLocal: false,
-            isDemo: false,
-            cachedOffline: false,
-            relPath: item.path || ''
-          };
-        });
-        state.sourceLabel = label;
-        state.activeFolder = 'ALL';
-        state.currentTrackId = null;
-        updateOfflineCounter();
-        renderAll();
-        markCachedTracks();
-        if (deferFirstLoad) return;
+        // Enlace principal: solo carpetas sin clave
+        let canciones = null;
+        try {
+          canciones = (await api('lista')).canciones;
+          cacheSet('lista', canciones);
+        } catch (err) {
+          canciones = cacheGet('lista');
+          if (!canciones && err.server) showToast(err.message, 'error');
+        }
+        if (!canciones) return false;
+        state.lockedGroups = [];
+        setDriveTracks(canciones, 'Mi música');
         const visible = getFilteredTracks();
         if (visible.length > 0) loadTrack(visible[0].id, false);
-      }
-
-      async function fetchFromGitHubApi(user, repo, branch, musicRoot, silent = false) {
-        const cleanRoot = musicRoot.replace(/^\/+|\/+$/g, '');
-        const branchesToTry = branch ? [branch, branch === 'main' ? 'master' : 'main'] : ['main', 'master'];
-
-        for (const br of branchesToTry) {
-          try {
-            const apiUrl = `https://api.github.com/repos/${encodeURIComponent(user)}/${encodeURIComponent(repo)}/git/trees/${encodeURIComponent(br)}?recursive=1`;
-            const res = await fetch(apiUrl);
-            if (!res.ok) continue;
-            const data = await res.json();
-            if (!data.tree) continue;
-
-            const audioNodes = data.tree.filter(node => {
-              if (node.type !== 'blob') return false;
-              if (!isAudioFile(node.path)) return false;
-              if (cleanRoot && !node.path.startsWith(cleanRoot + '/')) return false;
-              return true;
-            });
-
-            if (audioNodes.length === 0) continue;
-
-            const items = audioNodes.map(node => {
-              let subPath = cleanRoot ? node.path.slice(cleanRoot.length + 1) : node.path;
-              const parts = subPath.split('/');
-              const fileName = parts.pop();
-              const folder = parts.length > 0 ? parts.join('/') : (cleanRoot || 'Raíz');
-              const rawUrl = `https://raw.githubusercontent.com/${encodeURIComponent(user)}/${encodeURIComponent(repo)}/${encodeURIComponent(br)}/${node.path.split('/').map(encodeURIComponent).join('/')}`;
-              return { title: cleanTitle(fileName), folder, path: node.path, url: rawUrl };
-            });
-
-            applyRemoteTracks(items, `GitHub: ${user}/${repo}`, '');
-            if (!silent) {
-              showToast(`Cargadas ${items.length} canciones desde ${user}/${repo}.`, 'success');
-            }
-            return true;
-          } catch (e) {}
-        }
-
-        if (!silent) showToast('No se encontraron audios en ese repositorio.', 'error');
-        return false;
+        return true;
       }
 
       // Build Hierarchical Subfolder Tree
@@ -1389,8 +1253,8 @@
           nowPlayingFolder.textContent = 'FolderBeats';
         }
 
-        playPauseIcon.setAttribute('data-lucide', state.isPlaying ? 'pause' : 'play');
-        playPauseIcon.classList.toggle('ml-0.5', !state.isPlaying);
+        playIconWrap.style.display = state.isPlaying ? 'none' : '';
+        pauseIconWrap.style.display = state.isPlaying ? '' : 'none';
         audioStatusLabel.textContent = state.isPlaying ? 'Reproduciendo' : 'Pausado';
 
         shuffleBtn.classList.toggle('text-orange-400', state.shuffle);
@@ -1470,7 +1334,7 @@
       // Descarga automática: al escuchar una canción se guarda en el dispositivo
       const downloading = new Set();
       async function cacheRemoteTrackOffline(track) {
-        if (track.cachedOffline || !track.remoteUrl || track.enc || downloading.has(track.id)) return;
+        if (track.cachedOffline || !track.remoteUrl || track.fileId || track.enc || downloading.has(track.id)) return;
         downloading.add(track.id);
         try {
           const res = await fetch(track.remoteUrl);
@@ -1494,34 +1358,29 @@
         return playbackBlobUrl;
       }
 
-      // Decide de dónde sale el audio: memoria del dispositivo o internet
+      // Decide de dónde sale el audio: memoria del dispositivo o Google Drive
       async function resolvePlayable(track) {
         if (!track.remoteUrl) return { url: track.url };          // demo o archivos locales
         const rec = await getOfflineRecord(track.id);
-        if (track.enc) {
-          const g = state.lockedGroups.find(x => x.id === track.groupId);
-          if (!g || !g.key) throw new Error('locked');
-          let data;
-          if (rec && rec.blob) {
-            data = new Uint8Array(await rec.blob.arrayBuffer());
-          } else {
-            let res;
-            try { res = await fetch(track.remoteUrl); } catch (e) { throw NOT_DOWNLOADED; }
-            if (!res.ok) throw NOT_DOWNLOADED;
-            const buf = await res.arrayBuffer();
-            data = new Uint8Array(buf);
-            // Se guarda cifrada: en el celular solo se abre con la contraseña de la carpeta
-            await saveTrackToOfflineDB(track, new Blob([buf]));
-          }
-          const plain = await aesDecrypt(g.key, fromB64(track.enc.iv), data);
-          return { url: usePlaybackBlob(new Blob([plain], track.enc.type ? { type: track.enc.type } : undefined)) };
-        }
-        if (rec && rec.blob) {
+        if (rec && rec.blob && !rec.enc) {
           track.cachedOffline = true;
           return { url: usePlaybackBlob(rec.blob) };
         }
         if (!navigator.onLine) throw NOT_DOWNLOADED;
-        return { url: track.remoteUrl, cacheAfter: true };
+        const g = track.groupId ? state.lockedGroups.find(x => x.id === track.groupId) : null;
+        let r;
+        try {
+          r = await api('audio', { fileId: track.fileId, token: g ? g.token : undefined, admin: adminSessionToken() });
+        } catch (err) {
+          if (err.offline) throw NOT_DOWNLOADED;
+          throw err;
+        }
+        const blob = new Blob([fromB64(r.data)], { type: r.mime || 'audio/mpeg' });
+        // Descarga automática: queda guardada en este aparato
+        await saveTrackToOfflineDB(track, blob);
+        renderTracklist();
+        if (window.lucide) lucide.createIcons();
+        return { url: usePlaybackBlob(blob) };
       }
 
       function notifyNotDownloaded() {
@@ -1745,6 +1604,8 @@
       });
 
       audio.addEventListener('ended', () => playNext(true));
+      audio.addEventListener('play', () => { if (!state.isPlaying) { state.isPlaying = true; renderTracklist(); updatePlayerUI(); } });
+      audio.addEventListener('pause', () => { if (state.isPlaying && !audio.ended) { state.isPlaying = false; renderTracklist(); updatePlayerUI(); } });
       // Cada vez que suena una canción de internet, se descarga sola al dispositivo
       audio.addEventListener('playing', () => {
         const t = state.tracks.find(x => x.id === state.currentTrackId);
@@ -1769,13 +1630,13 @@
       volumeRange.addEventListener('input', () => {
         audio.volume = Number(volumeRange.value);
         audio.muted = audio.volume === 0;
-        volumeIcon.setAttribute('data-lucide', audio.muted ? 'volume-x' : 'volume-2');
+        showMuteIcon(audio.muted);
         if (window.lucide) lucide.createIcons();
       });
 
       muteBtn.addEventListener('click', () => {
         audio.muted = !audio.muted;
-        volumeIcon.setAttribute('data-lucide', audio.muted ? 'volume-x' : 'volume-2');
+        showMuteIcon(audio.muted);
         if (window.lucide) lucide.createIcons();
       });
 
@@ -1832,14 +1693,8 @@
       closeSidebarBtn.addEventListener('click', closeSidebar);
       sidebarBackdrop.addEventListener('click', closeSidebar);
 
-      // ===================== Panel de Administrador (desde la app, guarda en GitHub) =====================
-      const TOKEN_STORAGE_KEY = 'folderbeats_token_v1';
-      const ghTokenBox = document.getElementById('ghTokenBox');
-      const ghTokenInput = document.getElementById('ghTokenInput');
-      const ghTokenSaveBtn = document.getElementById('ghTokenSaveBtn');
-      const ghConnected = document.getElementById('ghConnected');
+      // ===================== Panel de Administrador (claves y enlaces; música en Google Drive) =====================
       const ghRepoLabel = document.getElementById('ghRepoLabel');
-      const ghForgetBtn = document.getElementById('ghForgetBtn');
       const upOpenBtn = document.getElementById('upOpenBtn');
       const adminRefreshBtn = document.getElementById('adminRefreshBtn');
       const upBox = document.getElementById('upBox');
@@ -1851,24 +1706,17 @@
       const upGoBtn = document.getElementById('upGoBtn');
       const upCancelBtn = document.getElementById('upCancelBtn');
 
-      const MIME_BY_EXT = { mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac', opus: 'audio/ogg', webm: 'audio/webm' };
-      const MAX_FILE = 95 * 1024 * 1024;   // GitHub no acepta archivos de más de 100 MB
+      const MAX_FILE = 30 * 1024 * 1024;   // límite de Google por canción
       const admin = {
-        vaultKey: null, token: null, owner: '', repo: '', branch: 'main',
-        tree: [],          // archivos del repositorio { path, sha, size }
-        lib: null,         // biblioteca.json actual
-        vault: {},         // { carpeta: clave }
-        groups: [],        // carpetas con clave abiertas { nombre, id, pwd, salt, iter, wiv, wkey, dataKey, dataKeyRaw, list }
-        keepGroups: [],    // carpetas con clave que no se pudieron abrir (se conservan tal cual)
-        folders: [],
+        token: null,       // sesión de admin (la da tu Apps Script)
+        carpetas: [],      // { id, path, candado: { id, clave } | null }
+        canciones: [],
         editing: null,
-        pending: [],       // archivos elegidos para subir { file, sub }
+        pending: [],       // { file, sub }
         busy: false
       };
+      function adminSessionToken() { return admin.token || undefined; }
 
-      const musicRootPath = () => ((window.FOLDERBEATS_CONFIG || {}).musicRoot || 'musica').replace(/^\/+|\/+$/g, '');
-      function groupIdFor(nombre) { return sha256Hex(`g|${nombre}`).then(h => h.slice(0, 16)); }
-      function randomHex(n) { return Array.from(randomBytes(n)).map(x => x.toString(16).padStart(2, '0')).join(''); }
       function siteBaseUrl() {
         const loc = window.location;
         if (loc.protocol.startsWith('http') && loc.hostname !== 'localhost' && loc.hostname !== '127.0.0.1') {
@@ -1890,228 +1738,102 @@
       }
       function setBusy(b) {
         admin.busy = b;
-        [upOpenBtn, adminRefreshBtn, upGoBtn, ghForgetBtn].forEach(el => { el.disabled = b; el.classList.toggle('opacity-50', b); });
+        [upOpenBtn, adminRefreshBtn, upGoBtn].forEach(el => { el.disabled = b; el.classList.toggle('opacity-50', b); });
         adminFolderList.querySelectorAll('button,input').forEach(el => { el.disabled = b; });
       }
 
       function openAdmin() {
         adminModal.classList.remove('hidden');
         adminModal.classList.add('flex');
-        if (!admin.vaultKey) setTimeout(() => adminPwdInput.focus(), 50);
+        if (!admin.token) setTimeout(() => adminPwdInput.focus(), 50);
       }
       function closeAdmin() {
-        if (admin.busy) { showToast('Espera a que termine de guardar.', 'info'); return; }
+        if (admin.busy) { showToast('Espera a que termine.', 'info'); return; }
         adminModal.classList.add('hidden');
         adminModal.classList.remove('flex');
       }
       function adminLogout() {
         if (admin.busy) return;
-        Object.assign(admin, { vaultKey: null, token: null, tree: [], lib: null, vault: {}, groups: [], keepGroups: [], folders: [], editing: null, pending: [] });
+        Object.assign(admin, { token: null, carpetas: [], canciones: [], editing: null, pending: [] });
         adminWork.classList.add('hidden');
         adminLogoutBtn.classList.add('hidden');
         adminLoginForm.classList.remove('hidden');
-        ghConnected.classList.add('hidden');
-        ghTokenBox.classList.add('hidden');
         adminLog.textContent = '';
         adminLog.classList.add('hidden');
         adminProgressWrap.classList.add('hidden');
+        tryAutoLoadHostedMusic();   // vuelve a la vista pública
       }
       openAdminBtn.addEventListener('click', openAdmin);
       closeAdminBtn.addEventListener('click', closeAdmin);
       adminLogoutBtn.addEventListener('click', adminLogout);
       adminModal.addEventListener('click', e => { if (e.target === adminModal) closeAdmin(); });
 
-      async function decryptVault(lib) {
-        const v = lib && lib.vault;
-        if (!v || !v.iv || !v.datos) return {};
-        return JSON.parse(TD.decode(await aesDecrypt(admin.vaultKey, fromB64(v.iv), fromB64(v.datos))));
-      }
-
-      // En el enlace principal, el admin ve y abre todas las carpetas
-      async function adminUnlockAll() {
-        if (!state.lib || !admin.vaultKey) return 0;
-        let vault = {};
-        try { vault = await decryptVault(state.lib); } catch (e) { return 0; }
-        let n = 0;
-        for (const g of state.lockedGroups) {
-          const pwd = vault[g.nombre];
-          if (!pwd) continue;
-          g.visible = true;
-          if (!g.unlocked && await unlockGroupWithRawKey(g, await folderRawKey(pwd, g.salt, g.iter))) n++;
-          const top = g.nombre.split('/')[0];
-          if (top) state.expandedFolders.add(top);
-        }
-        renderAll();
-        return n;
-      }
-
-      // ---------- GitHub ----------
-      async function gh(path, { method = 'GET', body, raw = false } = {}) {
-        const url = `https://api.github.com/repos/${encodeURIComponent(admin.owner)}/${encodeURIComponent(admin.repo)}${path}`;
-        const headers = { Authorization: `Bearer ${admin.token}`, Accept: raw ? 'application/vnd.github.raw' : 'application/vnd.github+json' };
-        if (body) headers['Content-Type'] = 'application/json';
-        let res;
-        try {
-          res = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, cache: 'no-store' });
-        } catch (e) {
-          throw new Error('Sin conexión con GitHub. Revisa tu internet.');
-        }
-        if (!res.ok) {
-          let msg = '';
-          try { msg = (await res.json()).message || ''; } catch (e) {}
-          if (res.status === 401) msg = 'El token no es válido o ya venció.';
-          if (res.status === 403 || res.status === 404) msg = msg || 'El token no tiene permiso para este repositorio.';
-          const err = new Error(`GitHub (${res.status}): ${msg}`);
-          err.status = res.status;
-          throw err;
-        }
-        if (raw) return new Uint8Array(await res.arrayBuffer());
-        return res.status === 204 ? null : res.json();
-      }
-      async function uploadBlob(bytes) {
-        const r = await gh('/git/blobs', { method: 'POST', body: { content: toB64(bytes), encoding: 'base64' } });
-        return r.sha;
-      }
-
-      async function saveTokenOnDevice(tok) {
-        const { iv, ct } = await aesEncrypt(admin.vaultKey, TE.encode(tok));
-        try { localStorage.setItem(TOKEN_STORAGE_KEY, JSON.stringify({ iv: toB64(iv), ct: toB64(ct) })); } catch (e) {}
-      }
-      async function loadTokenFromDevice() {
-        try {
-          const s = JSON.parse(localStorage.getItem(TOKEN_STORAGE_KEY) || 'null');
-          if (!s) return null;
-          return TD.decode(await aesDecrypt(admin.vaultKey, fromB64(s.iv), fromB64(s.ct)));
-        } catch (e) { return null; }
-      }
-
-      async function connectGitHub(tok) {
-        const cfg = window.FOLDERBEATS_CONFIG || {};
-        admin.owner = (cfg.githubUser || '').trim();
-        admin.repo = (cfg.githubRepo || '').trim();
-        admin.token = tok;
-        const info = await gh('');
-        if (info.permissions && info.permissions.push === false) throw new Error('El token no tiene permiso para guardar (Contents: Read and write).');
-        admin.branch = info.default_branch || 'main';
-        ghRepoLabel.textContent = `Conectado a ${admin.owner}/${admin.repo}`;
-        await loadRepoState();
-      }
-
-      function showConnected(on) {
-        ghConnected.classList.toggle('hidden', !on);
-        ghTokenBox.classList.toggle('hidden', on);
-        if (window.lucide) lucide.createIcons();
-      }
-
-      async function loadRepoState() {
-        const ref = await gh(`/git/ref/heads/${encodeURIComponent(admin.branch)}`);
-        const commit = await gh(`/git/commits/${ref.object.sha}`);
-        const tree = await gh(`/git/trees/${commit.tree.sha}?recursive=1`);
-        admin.tree = (tree.tree || []).filter(n => n.type === 'blob').map(n => ({ path: n.path, sha: n.sha, size: n.size || 0 }));
-        admin.lib = null; admin.vault = {}; admin.groups = []; admin.keepGroups = [];
-        const libNode = admin.tree.find(n => n.path === 'biblioteca.json');
-        if (libNode) {
-          try { admin.lib = JSON.parse(TD.decode(await gh(`/git/blobs/${libNode.sha}`, { raw: true }))); } catch (e) {}
-        }
-        if (admin.lib) {
-          try { admin.vault = await decryptVault(admin.lib); } catch (e) { log('No se pudieron leer las claves guardadas.'); }
-          for (const g of (admin.lib.bloqueadas || [])) {
-            const pwd = admin.vault[g.nombre];
-            try {
-              if (!pwd || !g.wkey) throw new Error('sin clave');
-              const pk = await importAesKey(await folderRawKey(pwd, g.salt, g.iter));
-              const dk = await aesDecrypt(pk, fromB64(g.wiv), fromB64(g.wkey));
-              const dataKey = await importAesKey(dk);
-              const list = JSON.parse(TD.decode(await aesDecrypt(dataKey, fromB64(g.iv), fromB64(g.datos))));
-              admin.groups.push({ nombre: g.nombre, id: g.id, pwd, salt: g.salt, iter: g.iter, wiv: g.wiv, wkey: g.wkey, dataKey, dataKeyRaw: dk, list });
-            } catch (e) {
-              admin.keepGroups.push(g);
-              log(`Aviso: no se pudo abrir «${g.nombre}»; se deja como está.`);
-            }
-          }
-        }
-        buildAdminFolders();
-        renderAdminFolders();
-      }
-
-      function freeFiles() {
-        const mr = musicRootPath();
-        return admin.tree.filter(n => n.path.startsWith(mr + '/') && isAudioFile(n.path)).map(n => {
-          const rel = n.path.slice(mr.length + 1);
-          const parts = rel.split('/');
-          const name = parts.pop();
-          return { ...n, rel, name, folder: parts.join('/') || 'General' };
-        });
-      }
-      function addFolderPath(set, f) {
-        let acc = '';
-        f.split('/').filter(Boolean).forEach(p => { acc = acc ? `${acc}/${p}` : p; set.add(acc); });
-      }
-      function buildAdminFolders() {
-        const set = new Set();
-        freeFiles().forEach(f => addFolderPath(set, f.folder));
-        admin.groups.forEach(g => { addFolderPath(set, g.nombre); g.list.forEach(e => addFolderPath(set, e.folder)); });
-        admin.keepGroups.forEach(g => addFolderPath(set, g.nombre));
-        admin.folders = Array.from(set).sort((a, b) => a.localeCompare(b));
-      }
       const inFolder = (f, folder) => f === folder || f.startsWith(folder + '/');
-      function groupOf(folder) { return admin.groups.find(g => inFolder(folder, g.nombre)) || null; }
-      function countIn(folder) {
-        return freeFiles().filter(f => inFolder(f.folder, folder)).length
-          + admin.groups.reduce((n, g) => n + g.list.filter(e => inFolder(e.folder, folder)).length, 0);
+      function candadoDe(path) { return admin.carpetas.find(c => c.candado && inFolder(path, c.path)) || null; }
+      function countIn(path) { return admin.canciones.filter(c => inFolder(c.folder, path)).length; }
+
+      // Trae de tu Apps Script todas las carpetas y canciones (también las que tienen clave)
+      async function loadEstado(refrescar) {
+        const r = await api('admin_estado', { admin: admin.token, refrescar: !!refrescar });
+        admin.carpetas = r.carpetas.sort((a, b) => a.path.localeCompare(b.path));
+        admin.canciones = r.canciones;
+        ghRepoLabel.textContent = `Conectado a tu Google Drive: ${r.raiz}`;
+        renderAdminFolders();
+        // El admin ve y escucha todo en el reproductor
+        state.lockedGroups = admin.carpetas.filter(c => c.candado).map(c => ({ id: c.candado.id, nombre: c.path, visible: true, unlocked: true, token: r.tokens[c.candado.id] }));
+        const groupOfPath = p => state.lockedGroups.find(g => inFolder(p, g.nombre));
+        setDriveTracks([], 'Admin: toda tu música');
+        state.tracks = r.canciones.map(c => driveTrack(c, (groupOfPath(c.folder) || {}).id));
+        state.tracks.forEach(t => { const top = t.folder.split('/')[0]; if (top) state.expandedFolders.add(top); });
+        renderAll();
+        markCachedTracks();
       }
 
       function renderAdminFolders() {
-        const groupIds = {};
-        admin.groups.forEach(g => { groupIds[g.nombre] = g.id; });
-        if (!admin.folders.length) {
-          adminFolderList.innerHTML = '<p class="text-xs text-slate-500">Todavía no hay canciones. Usa «Subir música».</p>';
+        if (!admin.carpetas.length) {
+          adminFolderList.innerHTML = '<p class="text-xs text-slate-500">Tu carpeta MAUZI MÚSICA de Google Drive está vacía. Crea subcarpetas y sube canciones ahí (o usa «Subir música»), luego toca «Actualizar».</p>';
         } else {
-          adminFolderList.innerHTML = admin.folders.map(folder => {
-            const depth = folder.split('/').length - 1;
-            const name = folder.split('/').pop();
-            const g = groupOf(folder);
-            const isRoot = Boolean(g && g.nombre === folder);
-            const inside = Boolean(g && !isRoot);
-            const kept = admin.keepGroups.find(k => inFolder(folder, k.nombre));
-            const hasLockedChild = admin.groups.some(x => x.nombre.startsWith(folder + '/'));
-            const f = escapeHtml(folder);
-            const editing = admin.editing === folder;
+          adminFolderList.innerHTML = admin.carpetas.map(c => {
+            const depth = c.path.split('/').length - 1;
+            const name = c.path.split('/').pop();
+            const lockOwner = candadoDe(c.path);
+            const isRoot = Boolean(c.candado);
+            const inside = Boolean(lockOwner && !isRoot);
+            const hasLockedChild = admin.carpetas.some(x => x.candado && x.path.startsWith(c.path + '/'));
+            const editing = admin.editing === c.id;
             let actions = '';
-            if (kept) actions = `<span class="text-[11px] text-red-300">No se pudo abrir</span>`;
-            else if (inside) actions = `<span class="text-[11px] text-orange-300/80">Dentro de «${escapeHtml(g.nombre)}»</span>`;
+            if (inside) actions = `<span class="text-[11px] text-orange-300/80">Dentro de «${escapeHtml(lockOwner.path)}»</span>`;
             else if (isRoot) actions = `
-                <button type="button" data-act="edit" data-folder="${f}" class="px-2 py-1 rounded-lg bg-abyss-800 border border-blue-500/30 text-[11px] text-white">Cambiar clave</button>
-                <button type="button" data-act="unlock" data-folder="${f}" class="px-2 py-1 rounded-lg bg-abyss-800 border border-red-500/30 text-[11px] text-red-200">Quitar clave</button>`;
+                <button type="button" data-act="edit" data-id="${c.id}" class="px-2 py-1 rounded-lg bg-abyss-800 border border-blue-500/30 text-[11px] text-white">Cambiar clave</button>
+                <button type="button" data-act="unlock" data-id="${c.id}" class="px-2 py-1 rounded-lg bg-abyss-800 border border-red-500/30 text-[11px] text-red-200">Quitar clave</button>`;
             else if (hasLockedChild) actions = `<span class="text-[11px] text-slate-500">Tiene subcarpetas con clave</span>`;
-            else actions = `<button type="button" data-act="edit" data-folder="${f}" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gradient-to-r from-orange-500 to-red-600 text-[11px] font-semibold text-white"><i data-lucide="lock" class="w-3 h-3"></i>Poner contraseña</button>`;
-            const link = isRoot ? linkFor(groupIds[folder]) : '';
+            else actions = `<button type="button" data-act="edit" data-id="${c.id}" class="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gradient-to-r from-orange-500 to-red-600 text-[11px] font-semibold text-white"><i data-lucide="lock" class="w-3 h-3"></i>Poner contraseña</button>`;
+            const link = isRoot ? linkFor(c.candado.id) : '';
             return `
               <div class="rounded-xl border ${isRoot ? 'border-orange-500/40' : 'border-blue-500/15'} bg-abyss-850/60 px-3 py-2 space-y-2" style="margin-left:${Math.min(depth, 4) * 12}px">
                 <div class="flex flex-wrap items-center gap-2">
-                  <i data-lucide="${g || kept ? 'lock' : 'folder'}" class="w-4 h-4 shrink-0 ${g || kept ? 'text-orange-400' : 'text-blue-400/80'}"></i>
-                  <span class="text-sm text-white truncate flex-1 min-w-[100px]">${escapeHtml(name)} <span class="text-[11px] text-slate-500">(${countIn(folder)})</span></span>
+                  <i data-lucide="${lockOwner ? 'lock' : 'folder'}" class="w-4 h-4 shrink-0 ${lockOwner ? 'text-orange-400' : 'text-blue-400/80'}"></i>
+                  <span class="text-sm text-white truncate flex-1 min-w-[100px]">${escapeHtml(name)} <span class="text-[11px] text-slate-500">(${countIn(c.path)})</span></span>
                   ${actions}
                 </div>
                 ${isRoot ? `
-                  <div class="text-[11px] text-slate-300">Clave: <b class="text-orange-300 select-all">${escapeHtml(g.pwd)}</b></div>
+                  <div class="text-[11px] text-slate-300">Clave: <b class="text-orange-300 select-all">${escapeHtml(c.candado.clave)}</b></div>
                   <div class="flex items-center gap-2">
                     <input type="text" readonly value="${escapeHtml(link)}" class="flex-1 min-w-0 bg-abyss-950 border border-blue-500/20 rounded-lg px-2 py-1 text-[11px] text-blue-200" />
                     <button type="button" data-act="copy" data-link="${escapeHtml(link)}" class="shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-gradient-to-r from-orange-500 to-red-600 text-white text-[11px] font-semibold"><i data-lucide="copy" class="w-3 h-3"></i>Copiar enlace</button>
                   </div>` : ''}
                 ${editing ? `
                   <div class="flex items-center gap-2">
-                    <input type="text" data-pwd-for="${f}" placeholder="Nueva clave (ej. 12345)" class="flex-1 min-w-0 bg-abyss-900 border border-orange-500/40 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-orange-500" />
-                    <button type="button" data-act="save" data-folder="${f}" class="px-3 py-1.5 rounded-lg bg-gradient-to-r from-orange-500 to-red-600 text-white text-xs font-semibold">Guardar</button>
+                    <input type="text" data-pwd-for="${c.id}" placeholder="Clave (ej. 12345)" class="flex-1 min-w-0 bg-abyss-900 border border-orange-500/40 rounded-lg px-2.5 py-1.5 text-sm text-white focus:outline-none focus:border-orange-500" />
+                    <button type="button" data-act="save" data-id="${c.id}" class="px-3 py-1.5 rounded-lg bg-gradient-to-r from-orange-500 to-red-600 text-white text-xs font-semibold">Guardar</button>
                     <button type="button" data-act="cancel" class="px-2 py-1.5 rounded-lg bg-abyss-800 border border-blue-500/30 text-slate-200 text-xs">✕</button>
                   </div>` : ''}
               </div>`;
           }).join('');
         }
-        // Opciones de destino para subir
         const prev = upDest.value;
         upDest.innerHTML = `<option value="__nueva__">➕ Carpeta nueva…</option>` +
-          admin.folders.map(f => `<option value="${escapeHtml(f)}">${escapeHtml(f)}${groupOf(f) ? ' 🔒' : ''}</option>`).join('');
+          admin.carpetas.map(c => `<option value="${escapeHtml(c.path)}">${escapeHtml(c.path)}${candadoDe(c.path) ? ' 🔒' : ''}</option>`).join('');
         if (prev && Array.from(upDest.options).some(o => o.value === prev)) upDest.value = prev;
         upNewFolder.classList.toggle('hidden', upDest.value !== '__nueva__');
         if (window.lucide) lucide.createIcons();
@@ -2119,58 +1841,16 @@
 
       function copyText(text) {
         const done = () => showToast('Enlace copiado. Compártelo junto con su clave.', 'success');
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          navigator.clipboard.writeText(text).then(done).catch(() => fallback());
-        } else fallback();
-        function fallback() {
+        const fallback = () => {
           const ta = document.createElement('textarea');
           ta.value = text;
           document.body.appendChild(ta);
           ta.select();
           try { document.execCommand('copy'); done(); } catch (e) {}
           ta.remove();
-        }
-      }
-
-      // ---------- Guardar en GitHub (un solo cambio con todo) ----------
-      async function buildLibrary(paths) {
-        const mr = musicRootPath();
-        const libres = paths.filter(p => p.startsWith(mr + '/') && isAudioFile(p)).sort().map(p => {
-          const parts = p.slice(mr.length + 1).split('/');
-          const name = parts.pop();
-          return { title: cleanTitle(name), folder: parts.join('/') || 'General', path: p };
-        });
-        const bloqueadas = [];
-        for (const g of admin.groups) {
-          const { iv, ct } = await aesEncrypt(g.dataKey, TE.encode(JSON.stringify(g.list)));
-          bloqueadas.push({ id: g.id, nombre: g.nombre, salt: g.salt, iter: g.iter, wiv: g.wiv, wkey: g.wkey, iv: toB64(iv), datos: toB64(ct) });
-        }
-        admin.keepGroups.forEach(g => bloqueadas.push(g));
-        const vaultMap = {};
-        admin.keepGroups.forEach(g => { if (admin.vault[g.nombre]) vaultMap[g.nombre] = admin.vault[g.nombre]; });
-        admin.groups.forEach(g => { vaultMap[g.nombre] = g.pwd; });
-        const v = await aesEncrypt(admin.vaultKey, TE.encode(JSON.stringify(vaultMap)));
-        return { version: 4, generado: new Date().toISOString(), libres, bloqueadas, vault: { iv: toB64(v.iv), datos: toB64(v.ct) } };
-      }
-
-      async function commitChanges({ add = [], remove = [], message }) {
-        const removed = new Set(remove);
-        const paths = admin.tree.map(n => n.path).filter(p => !removed.has(p) && !add.some(a => a.path === p)).concat(add.map(a => a.path));
-        const lib = await buildLibrary(paths);
-        const libSha = await uploadBlob(TE.encode(JSON.stringify(lib, null, 2)));
-        const entries = add.map(a => ({ path: a.path, mode: '100644', type: 'blob', sha: a.sha }));
-        entries.push({ path: 'biblioteca.json', mode: '100644', type: 'blob', sha: libSha });
-        remove.filter(p => admin.tree.some(n => n.path === p)).forEach(p => entries.push({ path: p, mode: '100644', type: 'blob', sha: null }));
-        const ref = await gh(`/git/ref/heads/${encodeURIComponent(admin.branch)}`);
-        const head = await gh(`/git/commits/${ref.object.sha}`);
-        const tree = await gh('/git/trees', { method: 'POST', body: { base_tree: head.tree.sha, tree: entries } });
-        const commit = await gh('/git/commits', { method: 'POST', body: { message, tree: tree.sha, parents: [ref.object.sha] } });
-        await gh(`/git/refs/heads/${encodeURIComponent(admin.branch)}`, { method: 'PATCH', body: { sha: commit.sha } });
-        // Actualiza el panel y el reproductor
-        await loadRepoState();
-        await applyLibrary(lib);
-        await adminUnlockAll();
-        log('✔ Guardado en GitHub. La página pública se actualiza en 1 o 2 minutos.');
+        };
+        if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done).catch(fallback);
+        else fallback();
       }
 
       async function runTask(label, fn) {
@@ -2178,247 +1858,102 @@
         setBusy(true);
         adminLog.textContent = '';
         log(label);
-        setProgress(0, 1);
         try {
           await fn();
-          showToast('Guardado en GitHub.', 'success');
         } catch (err) {
           log(`ERROR: ${err && err.message ? err.message : err}`);
-          showToast('No se pudo guardar. Revisa el mensaje en Admin.', 'error');
-          try { await loadRepoState(); } catch (e) {}
+          if (err && err.admin) { showToast('Vuelve a entrar como admin.', 'error'); adminLogout(); }
+          else showToast(err && err.offline ? 'Sin internet.' : 'No se pudo. Revisa el mensaje en Admin.', 'error');
         } finally {
           setBusy(false);
           adminProgressWrap.classList.add('hidden');
         }
       }
 
-      // Poner clave a una carpeta libre: sus canciones se cifran y se quitan de la parte pública
-      async function lockFolder(folder, pwd) {
-        const files = freeFiles().filter(f => inFolder(f.folder, folder));
-        const dk = randomBytes(32);
-        const dataKey = await importAesKey(dk);
-        const salt = toB64(randomBytes(16));
-        const pk = await importAesKey(await folderRawKey(pwd, salt, FOLDER_ITER));
-        const w = await aesEncrypt(pk, dk);
-        const g = { nombre: folder, id: await groupIdFor(folder), pwd, salt, iter: FOLDER_ITER, wiv: toB64(w.iv), wkey: toB64(w.ct), dataKey, dataKeyRaw: dk, list: [] };
-        const add = [];
-        let i = 0;
-        for (const f of files) {
-          const bytes = await gh(`/git/blobs/${f.sha}`, { raw: true });
-          const enc = await aesEncrypt(dataKey, bytes);
-          const fileId = randomHex(16);
-          add.push({ path: `privado/${fileId}.bin`, sha: await uploadBlob(enc.ct) });
-          const ext = f.name.split('.').pop().toLowerCase();
-          g.list.push({ title: cleanTitle(f.name), name: f.name, folder: f.folder, file: fileId, iv: toB64(enc.iv), type: MIME_BY_EXT[ext] || '', size: f.size });
-          log(`Protegida: ${f.rel}`);
-          setProgress(++i, files.length + 1);
-        }
-        admin.groups.push(g);
-        await commitChanges({ add, remove: files.map(f => f.path), message: `Clave para «${folder}»` });
-      }
-
-      // Cambiar la clave: no hace falta volver a subir las canciones
-      async function changePassword(folder, pwd) {
-        const g = admin.groups.find(x => x.nombre === folder);
-        const salt = toB64(randomBytes(16));
-        const pk = await importAesKey(await folderRawKey(pwd, salt, FOLDER_ITER));
-        const w = await aesEncrypt(pk, g.dataKeyRaw);
-        Object.assign(g, { pwd, salt, iter: FOLDER_ITER, wiv: toB64(w.iv), wkey: toB64(w.ct) });
-        await commitChanges({ message: `Nueva clave para «${folder}»` });
-      }
-
-      // Quitar la clave: las canciones vuelven a ser libres
-      async function unlockFolder(folder) {
-        const g = admin.groups.find(x => x.nombre === folder);
-        const mr = musicRootPath();
-        const add = [];
-        const remove = [];
-        let i = 0;
-        for (const e of g.list) {
-          const p = `privado/${e.file}.bin`;
-          const node = admin.tree.find(n => n.path === p);
-          if (node) {
-            const plain = await aesDecrypt(g.dataKey, fromB64(e.iv), await gh(`/git/blobs/${node.sha}`, { raw: true }));
-            const name = e.name || `${e.title}.mp3`;
-            add.push({ path: `${mr}/${e.folder}/${name}`, sha: await uploadBlob(plain) });
-            remove.push(p);
-            log(`Liberada: ${e.folder}/${name}`);
-          }
-          setProgress(++i, g.list.length + 1);
-        }
-        admin.groups = admin.groups.filter(x => x !== g);
-        await commitChanges({ add, remove, message: `Sin clave «${folder}»` });
-      }
-
-      // Subir canciones desde el celular o la computadora
-      async function uploadSongs(dest, items) {
-        const mr = musicRootPath();
-        const add = [];
-        let i = 0;
-        for (const it of items) {
-          const folder = [dest, it.sub].filter(Boolean).join('/');
-          const name = it.file.name;
-          if (it.file.size > MAX_FILE) { log(`Saltada (pesa más de 95 MB): ${name}`); continue; }
-          const bytes = new Uint8Array(await it.file.arrayBuffer());
-          const g = groupOf(folder);
-          if (g) {
-            const enc = await aesEncrypt(g.dataKey, bytes);
-            const fileId = randomHex(16);
-            add.push({ path: `privado/${fileId}.bin`, sha: await uploadBlob(enc.ct) });
-            const ext = name.split('.').pop().toLowerCase();
-            g.list = g.list.filter(e => !(e.folder === folder && e.name === name));
-            g.list.push({ title: cleanTitle(name), name, folder, file: fileId, iv: toB64(enc.iv), type: MIME_BY_EXT[ext] || it.file.type || '', size: it.file.size });
-            log(`Subida con clave: ${folder}/${name}`);
-          } else {
-            add.push({ path: `${mr}/${folder}/${name}`, sha: await uploadBlob(bytes) });
-            log(`Subida: ${folder}/${name}`);
-          }
-          setProgress(++i, items.length + 1);
-        }
-        if (!add.length) throw new Error('No se subió ninguna canción.');
-        await commitChanges({ add, message: `Música nueva en «${dest}»` });
-      }
-
       // ---------- Eventos ----------
       adminLoginForm.addEventListener('submit', async e => {
         e.preventDefault();
-        if (!cryptoAvailable()) {
-          showToast('Este navegador no permite el cifrado. Abre la página con https (enlace de GitHub).', 'error');
-          return;
-        }
-        const cfg = (window.FOLDERBEATS_CONFIG || {}).admin;
-        if (!cfg || !cfg.hash) return;
         adminLoginBtn.disabled = true;
         adminLoginBtn.textContent = 'Comprobando...';
         adminLoginError.classList.add('hidden');
         try {
-          const bits = await pbkdf2Bits(adminPwdInput.value, fromB64(cfg.salt), cfg.iter, 512);
-          if (toB64(bits.slice(0, 32)) !== cfg.hash) {
-            adminLoginError.classList.remove('hidden');
-            return;
-          }
-          admin.vaultKey = await importAesKey(bits.slice(32));
+          const r = await api('admin_login', { clave: adminPwdInput.value });
+          admin.token = r.token;
           adminPwdInput.value = '';
           adminLoginForm.classList.add('hidden');
           adminWork.classList.remove('hidden');
           adminLogoutBtn.classList.remove('hidden');
-          const opened = await adminUnlockAll();
-          if (opened) showToast(`Admin: ${opened} carpeta(s) con clave abiertas para ti.`, 'success');
-          const tok = await loadTokenFromDevice();
-          if (tok) {
+          await runTask('Leyendo tu Google Drive...', async () => {
+            await loadEstado(false);
             adminLog.textContent = '';
-            log('Conectando con GitHub...');
-            try {
-              await connectGitHub(tok);
-              adminLog.textContent = '';
-              adminLog.classList.add('hidden');
-              showConnected(true);
-            } catch (err) {
-              log(`ERROR: ${err.message}`);
-              showConnected(false);
-            }
-          } else {
-            showConnected(false);
-          }
+            adminLog.classList.add('hidden');
+          });
+        } catch (err) {
+          if (err.server && /Contraseña/.test(err.message)) adminLoginError.classList.remove('hidden');
+          else showToast(err.offline ? 'Necesitas internet para entrar a Admin.' : err.message, 'error');
         } finally {
           adminLoginBtn.disabled = false;
           adminLoginBtn.textContent = 'Entrar';
         }
       });
 
-      ghTokenSaveBtn.addEventListener('click', async () => {
-        const tok = ghTokenInput.value.trim();
-        if (!tok) { showToast('Pega el token de GitHub.', 'error'); return; }
-        ghTokenSaveBtn.disabled = true;
-        ghTokenSaveBtn.textContent = 'Conectando...';
-        adminLog.textContent = '';
-        try {
-          await connectGitHub(tok);
-          await saveTokenOnDevice(tok);
-          ghTokenInput.value = '';
-          adminLog.classList.add('hidden');
-          showConnected(true);
-          showToast('Conectado a GitHub.', 'success');
-        } catch (err) {
-          log(`ERROR: ${err.message}`);
-          showToast('No se pudo conectar. Revisa el token.', 'error');
-        } finally {
-          ghTokenSaveBtn.disabled = false;
-          ghTokenSaveBtn.textContent = 'Conectar';
-        }
-      });
-
-      ghForgetBtn.addEventListener('click', () => {
-        if (!window.confirm('¿Desconectar GitHub en este aparato? Tendrás que pegar el token otra vez.')) return;
-        try { localStorage.removeItem(TOKEN_STORAGE_KEY); } catch (e) {}
-        admin.token = null;
-        showConnected(false);
-      });
-
-      adminRefreshBtn.addEventListener('click', () => runTask('Leyendo tu repositorio...', async () => {
-        await loadRepoState();
-        // Si subiste canciones directo en GitHub, se agregan a la lista del reproductor
-        const mr = musicRootPath();
-        const enRepo = admin.tree.map(n => n.path).filter(p => p.startsWith(mr + '/') && isAudioFile(p)).sort().join('|');
-        const enLista = ((admin.lib && admin.lib.libres) || []).map(t => t.path).sort().join('|');
-        if (!admin.lib || enRepo !== enLista) {
-          log('Agregando a la lista las canciones nuevas...');
-          await commitChanges({ message: 'Actualizar lista de canciones' });
-        } else {
-          log('✔ Todo está al día.');
-        }
+      adminRefreshBtn.addEventListener('click', () => runTask('Leyendo tu Google Drive...', async () => {
+        await loadEstado(true);
+        log('✔ Lista actualizada.');
       }));
 
       adminFolderList.addEventListener('click', async e => {
         const btn = e.target.closest('[data-act]');
         if (!btn || admin.busy) return;
         const act = btn.dataset.act;
-        const folder = btn.dataset.folder;
+        const id = btn.dataset.id;
+        const carpeta = admin.carpetas.find(c => c.id === id);
         if (act === 'copy') { copyText(btn.dataset.link); return; }
         if (act === 'edit') {
-          admin.editing = folder;
+          admin.editing = id;
           renderAdminFolders();
-          const inp = adminFolderList.querySelector(`[data-pwd-for="${CSS.escape(folder)}"]`);
+          const inp = adminFolderList.querySelector(`[data-pwd-for="${CSS.escape(id)}"]`);
           if (inp) inp.focus();
           return;
         }
         if (act === 'cancel') { admin.editing = null; renderAdminFolders(); return; }
         if (act === 'save') {
-          const inp = adminFolderList.querySelector(`[data-pwd-for="${CSS.escape(folder)}"]`);
-          const pwd = (inp && inp.value || '').trim();
-          if (pwd.length < 4) { showToast('La clave debe tener al menos 4 caracteres.', 'error'); return; }
+          const inp = adminFolderList.querySelector(`[data-pwd-for="${CSS.escape(id)}"]`);
+          const clave = (inp && inp.value || '').trim();
+          if (clave.length < 4) { showToast('La clave debe tener al menos 4 caracteres.', 'error'); return; }
           admin.editing = null;
-          const already = admin.groups.some(g => g.nombre === folder);
-          await runTask(already ? `Cambiando la clave de «${folder}»...` : `Poniendo clave a «${folder}»...`,
-            () => already ? changePassword(folder, pwd) : lockFolder(folder, pwd));
+          await runTask(`Guardando la clave de «${carpeta.path}»...`, async () => {
+            await api('admin_clave', { admin: admin.token, carpetaId: id, clave });
+            await loadEstado(false);
+            log('✔ Listo. Toca «Copiar enlace» y compártelo con su clave.');
+            showToast('Clave guardada.', 'success');
+          });
           return;
         }
         if (act === 'unlock') {
-          if (!window.confirm(`¿Quitar la clave de «${folder}»? Sus canciones quedarán libres para todos y su enlace dejará de funcionar.`)) return;
-          await runTask(`Quitando la clave de «${folder}»...`, () => unlockFolder(folder));
+          if (!window.confirm(`¿Quitar la clave de «${carpeta.path}»? Quedará libre para todos y su enlace dejará de funcionar.`)) return;
+          await runTask(`Quitando la clave de «${carpeta.path}»...`, async () => {
+            await api('admin_quitar', { admin: admin.token, carpetaId: id });
+            await loadEstado(false);
+            log('✔ La carpeta ahora es libre.');
+          });
         }
       });
       adminFolderList.addEventListener('keydown', e => {
         if (e.key === 'Enter' && e.target.matches('[data-pwd-for]')) {
-          const b = adminFolderList.querySelector(`[data-act="save"][data-folder="${CSS.escape(e.target.dataset.pwdFor)}"]`);
+          const b = adminFolderList.querySelector(`[data-act="save"][data-id="${CSS.escape(e.target.dataset.pwdFor)}"]`);
           if (b) b.click();
         }
       });
 
+      // ---------- Subir música a Google Drive desde la app ----------
       function updateUpSummary() {
         const n = admin.pending.length;
         const mb = admin.pending.reduce((s, it) => s + it.file.size, 0) / (1024 * 1024);
         upSummary.textContent = n ? `${n} canción(es) elegida(s) — ${mb.toFixed(1)} MB` : 'Nada elegido.';
       }
-      upOpenBtn.addEventListener('click', () => {
-        upBox.classList.toggle('hidden');
-        renderAdminFolders();
-      });
-      upCancelBtn.addEventListener('click', () => {
-        admin.pending = [];
-        updateUpSummary();
-        upBox.classList.add('hidden');
-      });
+      upOpenBtn.addEventListener('click', () => { upBox.classList.toggle('hidden'); renderAdminFolders(); });
+      upCancelBtn.addEventListener('click', () => { admin.pending = []; updateUpSummary(); upBox.classList.add('hidden'); });
       upDest.addEventListener('change', () => upNewFolder.classList.toggle('hidden', upDest.value !== '__nueva__'));
       upFiles.addEventListener('change', () => {
         admin.pending = Array.from(upFiles.files).filter(f => isAudioFile(f.name)).map(file => ({ file, sub: '' }));
@@ -2430,26 +1965,38 @@
         let top = '';
         admin.pending = files.map(file => {
           const parts = (file.webkitRelativePath || file.name).split('/');
-          top = parts.length > 1 ? parts[0] : top;
+          if (parts.length > 1) top = parts[0];
           return { file, sub: parts.slice(1, -1).join('/') };
         });
         upDir.value = '';
-        // Si es carpeta nueva, se propone el nombre de la carpeta elegida
         if (top && upDest.value === '__nueva__' && !upNewFolder.value.trim()) upNewFolder.value = top;
         updateUpSummary();
       });
       upGoBtn.addEventListener('click', async () => {
         if (!admin.pending.length) { showToast('Primero elige canciones o una carpeta.', 'error'); return; }
         let dest = upDest.value === '__nueva__' ? upNewFolder.value : upDest.value;
-        dest = (dest || '').replace(/\\/g, '/').split('/').map(s => s.trim()).filter(s => s && s !== '.' && s !== '..').join('/');
+        dest = (dest || '').replace(/\\/g, '/').split('/').map(x => x.trim()).filter(x => x && x !== '.' && x !== '..').join('/');
         if (!dest) { showToast('Escribe el nombre de la carpeta.', 'error'); return; }
         const items = admin.pending;
         await runTask(`Subiendo ${items.length} canción(es) a «${dest}»...`, async () => {
-          await uploadSongs(dest, items);
+          let i = 0;
+          let subidas = 0;
+          for (const it of items) {
+            const carpeta = [dest, it.sub].filter(Boolean).join('/');
+            if (it.file.size > MAX_FILE) { log(`Saltada (pesa más de 30 MB): ${it.file.name}`); setProgress(++i, items.length); continue; }
+            const data = toB64(new Uint8Array(await it.file.arrayBuffer()));
+            await api('admin_subir', { admin: admin.token, carpeta, nombre: it.file.name, mime: it.file.type || '', data });
+            subidas++;
+            log(`Subida: ${carpeta}/${it.file.name}`);
+            setProgress(++i, items.length);
+          }
           admin.pending = [];
           upNewFolder.value = '';
           updateUpSummary();
           upBox.classList.add('hidden');
+          await loadEstado(true);
+          log(`✔ ${subidas} canción(es) en tu Google Drive.`);
+          showToast('Música subida.', 'success');
         });
       });
 
@@ -2507,8 +2054,8 @@
           showToast('No se pudo abrir la carpeta. Conéctate a internet una vez.', 'error');
           return;
         }
-        if (!loadedHosted && window.location.protocol === 'file:') {
-          showToast('Abierto desde la computadora: aquí solo funciona el panel Admin. Para escuchar tu música usa el enlace de GitHub.', 'info');
+        if (!loadedHosted && !scriptUrl()) {
+          showToast('Falta conectar Google Drive (dirección del script).', 'info');
         }
         if (!loadedHosted) {
           const cached = (await loadOfflineTracksFromDB()).filter(item => !item.enc);
