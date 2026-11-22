@@ -1,34 +1,43 @@
-# FolderBeats — Reproductor por carpetas con bloqueo selectivo
+# FolderBeats — Reproductor por carpetas con enlaces privados
 
-Reproductor de música para GitHub Pages:
-- Las carpetas **libres** las escucha cualquiera.
-- Las carpetas **bloqueadas** piden contraseña y se suben **cifradas** (AES-256) en `privado/`,
-  así que nadie puede descargarlas ni escucharlas sin la clave, aunque el repositorio sea público.
-- La contraseña del admin no está escrita en el código (solo una huella PBKDF2 que no se puede leer).
+## Cómo se organiza
+Pon toda tu música dentro de `musica`, una carpeta por grupo:
 
-## Cómo usar el panel Admin (en Chrome o Edge de tu computadora)
-1. Pon tu música original en una carpeta **fuera** de este repositorio
-   (ej. `NUEVOS PROGRAMAS\musica-original\Publica`, `...\Acustico`). Cada subcarpeta = una carpeta del reproductor.
-2. Abre `index.html` y pulsa **Admin** → escribe tu contraseña de administrador.
-3. **Elegir carpeta del repositorio** → esta carpeta (`reproductor-github`).
-4. **Elegir carpeta de música** → tu carpeta de música original.
-5. Marca cuáles quedan **Bloqueadas** y escribe la contraseña que compartirás con esas personas.
-   Las que no marques quedan **Libres**.
-6. **Guardar cambios en el repositorio** → crea `musica/` (libres), `privado/` (cifradas) y `biblioteca.json`.
-7. Sube los cambios a GitHub (GitHub Desktop: *Commit* y *Push*).
+```
+reproductor-github/
+  musica/
+    CELEBREMOS/          ← libre (se ve en el enlace principal)
+    Acustico/            ← libre
+    María y Marta/       ← con contraseña y su propio enlace
+      Ensayo 1.mp3
+      Voces/             ← subcarpeta: se ve al entrar a María y Marta
+```
 
-Para cambiar algo después, repite los pasos: el panel recuerda las contraseñas de cada carpeta
-(guardadas cifradas con tu clave de admin) y solo vuelve a cifrar lo que cambió.
+## Poner contraseña y crear el enlace (en Chrome o Edge de tu computadora)
+1. Abre `index.html` → **Admin** → tu contraseña de administrador.
+2. **Elegir carpeta del repositorio** → `reproductor-github`.
+3. Marca la carpeta (ej. *María y Marta*) y escribe su clave (ej. `12345`).
+4. **Guardar cambios en el repositorio**.
+5. Toca **Copiar enlace** y compártelo con esas personas junto con la clave.
+6. Sube a GitHub: `index.html`, `sw.js`, `manifest.webmanifest`, `icono-192.png`, `icono-512.png`,
+   `biblioteca.json` y las carpetas `musica` y `privado`. **No subas `_respaldo`.**
 
-## Notas
-- `_respaldo/` nunca se sube (está en `.gitignore`). Ahí quedan copias de lo que el panel retira del repositorio.
-  Si subes archivos arrastrándolos en la web de GitHub, **no** arrastres `_respaldo`.
-- GitHub no acepta archivos de más de 100 MB.
-- Publicar en GitHub Pages: **Settings → Pages**, rama `main`. Enlace: `https://TU-USUARIO.github.io/NOMBRE-REPO/`.
+## Qué ve cada uno
+- **Enlace principal** (`https://rulymauzi-byte.github.io/Mauzi-Música-/`): solo las carpetas libres.
+  Si entras a **Admin** con tu contraseña, ves y abres todas.
+- **Enlace de una carpeta** (`...?carpeta=...`): solo esa carpeta y sus subcarpetas, después de poner su clave.
+  Las demás no aparecen.
 
-## Sin internet
-- Cada canción que alguien escucha se descarga sola a su celular o computadora (con o sin la app instalada).
-  Las de carpetas bloqueadas se guardan cifradas: solo se abren con su contraseña.
-- `sw.js` guarda la interfaz: si abren el enlace sin internet, el reproductor abre igual y pueden escuchar
-  lo ya descargado (punto naranja). Si tocan una que no han descargado, les avisa que se conecten una vez.
-- Sube `sw.js` junto con `index.html`.
+## Seguridad
+- Las canciones con contraseña se suben **cifradas** en `privado/`. El original queda en
+  `_respaldo/originales/` en tu computadora (no se sube). Si vuelves a dejar la carpeta libre, regresa sola a `musica/`.
+- Tu contraseña de admin no está escrita en el código.
+
+## Sin internet e instalar
+- Cada canción que se escucha se guarda sola en el dispositivo. Sin internet se puede escuchar lo descargado;
+  si una no está descargada, avisa que se conecten una vez.
+- Botón **Instalar** arriba. En iPhone: Safari → Compartir → *Agregar a inicio*.
+  Si se instala desde el enlace de una carpeta, la app abre siempre esa carpeta.
+
+## Reproducción
+- Tocar una canción reproduce **solo esa**. Para seguir con las demás: **Reproducir todo**, **Aleatorio** o **Repetir**.
