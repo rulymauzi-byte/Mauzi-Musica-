@@ -6,11 +6,12 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <meta name="theme-color" content="#090e1a" />
   <link rel="icon" href="./icono-192.png" />
+  <meta name="application-name" content="CORO MAUZI" />
   <link rel="apple-touch-icon" href="./icono-192.png" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="mobile-web-app-capable" content="yes" />
-  <meta name="apple-mobile-web-app-title" content="FolderBeats" />
-  <title>FolderBeats — Reproductor de Música por Subcarpetas</title>
+  <meta name="apple-mobile-web-app-title" content="CORO MAUZI" />
+  <title>CORO MAUZI</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -94,11 +95,11 @@
   <script>
     window.FOLDERBEATS_CONFIG = {
       githubUser: 'rulymauzi-byte',  // Tu usuario de GitHub
-      githubRepo: 'Mauzi-Música-',   // Tu repositorio
+      githubRepo: 'Mauzi-Musica-',   // Tu repositorio
       branch: 'main',            // Rama principal ('main' o 'master')
       scriptUrl: 'https://script.google.com/macros/s/AKfycbzpwv5pE0FI-z3ioDZtGM8ksZTh4To-e8v_iluYOPa3lUnUbTeHnd-fMLk0vnPkhgTd/exec', // Dirección de tu Apps Script de Google Drive (termina en /exec)
       musicRoot: 'musica',
-      siteUrl: 'https://rulymauzi-byte.github.io/Mauzi-Música-/' // Dirección pública (para los enlaces de cada carpeta)
+      siteUrl: 'https://rulymauzi-byte.github.io/Mauzi-Musica-/' // Dirección pública (para los enlaces de cada carpeta)
     };
   </script>
 
@@ -159,12 +160,10 @@
       <button id="mobileMenuBtn" type="button" class="lg:hidden p-2 rounded-lg hover:bg-blue-500/15 text-slate-300" aria-label="Abrir carpetas">
         <i data-lucide="folder-open" class="w-6 h-6 text-orange-400"></i>
       </button>
-      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shrink-0 shadow-lg shadow-red-600/25">
-        <i data-lucide="disc-3" class="w-5 h-5 text-white"></i>
-      </div>
+      <img src="./logo.png" alt="Logo Mauzi" class="h-8 sm:h-9 w-auto shrink-0 object-contain" />
       <div class="min-w-0">
         <div class="flex items-center gap-2">
-          <h1 class="font-bold text-base sm:text-lg tracking-tight text-white truncate">FolderBeats</h1>
+          <h1 class="font-bold text-base sm:text-lg tracking-tight text-white truncate">CORO MAUZI</h1>
           <span id="sourceBadge" class="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-500/15 text-blue-300 border border-blue-500/30 truncate max-w-[170px]">
             Demo integrada
           </span>
@@ -317,11 +316,11 @@
       <!-- Track Info -->
       <div class="w-full md:w-1/3 flex items-center gap-3 min-w-0">
         <div id="nowPlayingArt" class="w-11 h-11 rounded-xl bg-gradient-to-br from-orange-500/30 to-red-600/25 border border-orange-500/30 flex items-center justify-center shrink-0">
-          <i data-lucide="music" class="w-5 h-5 text-orange-400"></i>
+          <img src="./logo.png" alt="" class="w-8 h-auto object-contain" />
         </div>
         <div class="min-w-0 flex-1">
           <p id="nowPlayingTitle" class="text-sm font-semibold text-white truncate">Selecciona una canción</p>
-          <p id="nowPlayingFolder" class="text-xs text-blue-300/75 truncate">FolderBeats</p>
+          <p id="nowPlayingFolder" class="text-xs text-blue-300/75 truncate">CORO MAUZI</p>
         </div>
         <button id="nowPlayingFavBtn" type="button" class="p-2 rounded-lg hover:bg-blue-500/15 text-slate-400 transition shrink-0" aria-label="Marcar favorito">
           <i data-lucide="heart" class="w-4 h-4"></i>
@@ -1344,7 +1343,7 @@
           nowPlayingFavBtn.classList.toggle('text-slate-400', !isFav);
         } else {
           nowPlayingTitle.textContent = 'Selecciona una canción';
-          nowPlayingFolder.textContent = 'FolderBeats';
+          nowPlayingFolder.textContent = 'CORO MAUZI';
         }
 
         playIconWrap.style.display = state.isPlaying ? 'none' : '';

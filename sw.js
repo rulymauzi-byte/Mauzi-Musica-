@@ -1,8 +1,8 @@
 // FolderBeats — guarda la interfaz para que abra sin internet.
 // Las canciones NO se guardan aquí: se guardan en la memoria del dispositivo (IndexedDB)
 // cuando se escuchan.
-const CACHE = 'folderbeats-interfaz-v3';
-const INTERFAZ = ['./', './index.html', './manifest.webmanifest', './icono-192.png', './icono-512.png'];
+const CACHE = 'folderbeats-interfaz-v4';
+const INTERFAZ = ['./', './index.html', './logo.png', './manifest.webmanifest', './icono-192.png', './icono-512.png'];
 const EXTERNOS = [
   'https://cdn.tailwindcss.com/3.4.17',
   'https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js',
