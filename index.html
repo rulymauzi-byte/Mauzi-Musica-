@@ -157,7 +157,7 @@
   <header class="shrink-0 h-14 sm:h-16 border-b border-blue-500/20 bg-abyss-900/95 backdrop-blur-md px-3 sm:px-5 flex items-center justify-between gap-3 z-30">
     <div class="flex items-center gap-2.5 min-w-0">
       <button id="mobileMenuBtn" type="button" class="lg:hidden p-2 rounded-lg hover:bg-blue-500/15 text-slate-300" aria-label="Abrir carpetas">
-        <i data-lucide="menu" class="w-5 h-5"></i>
+        <i data-lucide="folder-open" class="w-6 h-6 text-orange-400"></i>
       </button>
       <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shrink-0 shadow-lg shadow-red-600/25">
         <i data-lucide="disc-3" class="w-5 h-5 text-white"></i>
@@ -259,12 +259,15 @@
       <div class="p-3 sm:p-6 border-b border-blue-500/15 bg-gradient-to-r from-blue-950/60 via-abyss-900/80 to-orange-950/30">
         <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-3 sm:gap-4">
           <div class="flex items-center gap-3 sm:gap-4 min-w-0">
+            <button id="folderBackBtn" type="button" class="hidden shrink-0 p-2 rounded-xl bg-abyss-800 hover:bg-abyss-700 border border-blue-500/30 text-white" aria-label="Atrás">
+              <i data-lucide="arrow-left" class="w-5 h-5"></i>
+            </button>
             <div class="w-12 h-12 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-orange-500/25 to-red-600/25 border border-orange-500/35 flex items-center justify-center shrink-0 shadow-xl">
               <i data-lucide="folder-open" class="w-6 h-6 sm:w-10 sm:h-10 text-orange-400"></i>
             </div>
             <div class="min-w-0">
               <p class="hidden sm:block text-xs font-medium uppercase tracking-wider text-orange-400 mb-0.5">Ruta activa</p>
-              <h2 id="activeFolderTitle" class="text-lg sm:text-2xl font-bold text-white truncate">Todas las canciones</h2>
+              <h2 id="activeFolderTitle" class="text-lg sm:text-2xl font-bold text-white truncate">Mis carpetas</h2>
               <p id="activeFolderMeta" class="text-xs sm:text-sm text-blue-200/70 mt-0.5">0 canciones</p>
             </div>
           </div>
@@ -506,6 +509,7 @@
       const emptyStateEl = document.getElementById('emptyState');
       const activeFolderTitleEl = document.getElementById('activeFolderTitle');
       const activeFolderMetaEl = document.getElementById('activeFolderMeta');
+      const folderBackBtn = document.getElementById('folderBackBtn');
       const sourceBadgeEl = document.getElementById('sourceBadge');
       const offlineCountText = document.getElementById('offlineCountText');
       const searchInputEl = document.getElementById('searchInput');
@@ -1049,8 +1053,6 @@
         if (!canciones) return false;
         state.lockedGroups = [];
         setDriveTracks(canciones, 'Mi música');
-        const visible = getFilteredTracks();
-        if (visible.length > 0) loadTrack(visible[0].id, false);
         return true;
       }
 
@@ -1154,7 +1156,7 @@
         const accessibleTracks = state.tracks.filter(t => !isFolderCurrentlyLocked(t.folder));
         const favCount = accessibleTracks.filter(t => state.favorites.has(t.id)).length;
         const topItems = [
-          { id: 'ALL', label: 'Todas las canciones', icon: 'library', count: accessibleTracks.length },
+          { id: 'ALL', label: 'Inicio', icon: 'home', count: accessibleTracks.length },
           { id: 'FAVORITES', label: 'Favoritos', icon: 'heart', count: favCount }
         ];
 
@@ -1181,63 +1183,155 @@
         folderListEl.innerHTML = html;
       }
 
-      function renderTracklist() {
-        const filtered = getFilteredTracks();
-        sourceBadgeEl.textContent = state.sourceLabel;
-
-        let title = state.activeFolder;
-        if (state.activeFolder === 'ALL') title = 'Todas las canciones';
-        if (state.activeFolder === 'FAVORITES') title = 'Favoritos';
-        activeFolderTitleEl.textContent = title;
-        activeFolderMetaEl.textContent = `${filtered.length} ${filtered.length === 1 ? 'canción' : 'canciones'}`;
-
-
-        if (filtered.length === 0) {
-          trackListEl.innerHTML = '';
-          emptyStateEl.classList.remove('hidden');
-        } else {
-          emptyStateEl.classList.add('hidden');
-          trackListEl.innerHTML = filtered.map((track, index) => {
-            const isCurrent = track.id === state.currentTrackId;
-            const isFav = state.favorites.has(track.id);
-            const durText = track.duration ? formatTime(track.duration) : '--:--';
-            return `
-              <div data-track-id="${escapeHtml(track.id)}"
-                class="track-row group grid grid-cols-[36px_1fr_44px] sm:grid-cols-[40px_1fr_180px_80px_44px] items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition ${
-                  isCurrent ? 'bg-gradient-to-r from-orange-500/15 to-red-600/10 text-orange-200 border border-orange-500/25' : 'hover:bg-blue-500/10 text-slate-200 border border-transparent'
-                }">
-                <div class="flex items-center justify-center text-xs tabular-nums">
-                  ${isCurrent && state.isPlaying
-                    ? `<div class="eq-playing flex items-end gap-0.5 h-4">
-                         <span class="bar-1 w-1 bg-orange-400 rounded-full"></span>
-                         <span class="bar-2 w-1 bg-red-500 rounded-full"></span>
-                         <span class="bar-3 w-1 bg-orange-400 rounded-full"></span>
-                       </div>`
-                    : `<span class="${isCurrent ? 'text-orange-400 font-bold' : 'text-slate-500 group-hover:hidden'}">${index + 1}</span>
-                       <i data-lucide="play" class="w-3.5 h-3.5 text-orange-400 fill-current hidden ${isCurrent ? '' : 'group-hover:block'}"></i>`
-                  }
-                </div>
-                <div class="min-w-0 flex items-center gap-2">
-                  <div class="min-w-0">
-                    <p class="text-sm font-medium truncate ${isCurrent ? 'text-orange-300' : 'text-white'}">${escapeHtml(track.title)}</p>
-                    <p class="text-xs text-blue-300/70 truncate sm:hidden">${escapeHtml(track.folder)}</p>
-                  </div>
-                  ${track.cachedOffline ? `<span title="Disponible sin conexión" class="shrink-0 w-2 h-2 rounded-full bg-orange-400"></span>` : ''}
-                </div>
-                <div class="hidden sm:flex items-center gap-1.5 text-xs text-blue-300/75 truncate">
-                  <i data-lucide="folder" class="w-3.5 h-3.5 text-blue-400/60 shrink-0"></i>
-                  <span class="truncate">${escapeHtml(track.folder)}</span>
-                </div>
-                <div class="hidden sm:block text-right text-xs text-slate-400 tabular-nums">${durText}</div>
-                <div class="flex items-center justify-end">
-                  <button type="button" data-fav-id="${escapeHtml(track.id)}" class="fav-btn p-1.5 rounded-lg hover:bg-blue-500/15 transition ${isFav ? 'text-red-500' : 'text-slate-500 hover:text-slate-200'}" aria-label="Favorito">
-                    <i data-lucide="heart" class="w-4 h-4 ${isFav ? 'fill-current' : ''}"></i>
-                  </button>
-                </div>
-              </div>
-            `;
-          }).join('');
+      // ===================== Navegación por carpetas =====================
+      // Raíz: en el enlace principal, "ALL" (lista de carpetas); en el enlace de una carpeta, esa carpeta.
+      function rootFolder() {
+        const g = LINK_ID ? state.lockedGroups[0] : null;
+        return g && g.unlocked && g.nombre ? g.nombre : 'ALL';
+      }
+      function parentOf(folder) {
+        if (!folder || folder === 'ALL' || folder === 'FAVORITES' || folder === rootFolder()) return null;
+        const parts = folder.split('/');
+        parts.pop();
+        const p = parts.join('/');
+        return p || 'ALL';
+      }
+      function findTreeNode(path) {
+        let node = buildFolderTree();
+        if (!path || path === 'ALL') return node;
+        for (const part of path.split('/')) {
+          node = node.children.get(part);
+          if (!node) return null;
         }
+        return node;
+      }
+
+      // Botón "atrás" del celular: sube una carpeta a la vez; en la principal sale de la app
+      let navGuard = false;
+      function ensureGuard() {
+        if (!navGuard && state.activeFolder !== rootFolder()) {
+          try { history.pushState({ folderbeats: true }, ''); navGuard = true; } catch (e) {}
+        }
+      }
+      function navigateTo(folder) {
+        state.activeFolder = folder;
+        state.searchQuery = '';
+        searchInputEl.value = '';
+        mobileSearchInputEl.value = '';
+        const top = folder.split('/')[0];
+        if (top) state.expandedFolders.add(top);
+        renderAll();
+        ensureGuard();
+        const main = document.querySelector('main');
+        if (main) main.scrollTop = 0;
+      }
+      function goUp() {
+        const p = parentOf(state.activeFolder) || rootFolder();
+        state.activeFolder = state.activeFolder === 'FAVORITES' ? rootFolder() : p;
+        renderAll();
+      }
+      window.addEventListener('popstate', () => {
+        navGuard = false;
+        // Primero se cierran ventanas abiertas
+        if (!sidebar.classList.contains('-translate-x-full') && window.innerWidth < 1024) {
+          closeSidebar();
+          ensureGuard();
+          return;
+        }
+        if (state.activeFolder !== rootFolder()) {
+          goUp();
+          ensureGuard();
+        }
+      });
+
+      function songRowHtml(track, index, showFolder) {
+        const isCurrent = track.id === state.currentTrackId;
+        const isFav = state.favorites.has(track.id);
+        const durText = track.duration ? formatTime(track.duration) : '--:--';
+        return `
+          <div data-track-id="${escapeHtml(track.id)}"
+            class="track-row group grid grid-cols-[36px_1fr_44px] sm:grid-cols-[40px_1fr_180px_80px_44px] items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition ${
+              isCurrent ? 'bg-gradient-to-r from-orange-500/15 to-red-600/10 text-orange-200 border border-orange-500/25' : 'hover:bg-blue-500/10 text-slate-200 border border-transparent'
+            }">
+            <div class="flex items-center justify-center text-xs tabular-nums">
+              ${isCurrent && state.isPlaying
+                ? `<div class="eq-playing flex items-end gap-0.5 h-4">
+                     <span class="bar-1 w-1 bg-orange-400 rounded-full"></span>
+                     <span class="bar-2 w-1 bg-red-500 rounded-full"></span>
+                     <span class="bar-3 w-1 bg-orange-400 rounded-full"></span>
+                   </div>`
+                : `<span class="${isCurrent ? 'text-orange-400 font-bold' : 'text-slate-500 group-hover:hidden'}">${index + 1}</span>
+                   <i data-lucide="play" class="w-3.5 h-3.5 text-orange-400 fill-current hidden ${isCurrent ? '' : 'group-hover:block'}"></i>`
+              }
+            </div>
+            <div class="min-w-0 flex items-center gap-2">
+              <div class="min-w-0">
+                <p class="text-sm font-medium truncate ${isCurrent ? 'text-orange-300' : 'text-white'}">${escapeHtml(track.title)}</p>
+                ${showFolder ? `<p class="text-xs text-blue-300/70 truncate sm:hidden">${escapeHtml(track.folder)}</p>` : ''}
+              </div>
+              ${track.cachedOffline ? `<span title="Disponible sin conexión" class="shrink-0 w-2 h-2 rounded-full bg-orange-400"></span>` : ''}
+            </div>
+            <div class="hidden sm:flex items-center gap-1.5 text-xs text-blue-300/75 truncate">
+              <i data-lucide="folder" class="w-3.5 h-3.5 text-blue-400/60 shrink-0"></i>
+              <span class="truncate">${escapeHtml(track.folder)}</span>
+            </div>
+            <div class="hidden sm:block text-right text-xs text-slate-400 tabular-nums">${durText}</div>
+            <div class="flex items-center justify-end">
+              <button type="button" data-fav-id="${escapeHtml(track.id)}" class="fav-btn p-1.5 rounded-lg hover:bg-blue-500/15 transition ${isFav ? 'text-red-500' : 'text-slate-500 hover:text-slate-200'}" aria-label="Favorito">
+                <i data-lucide="heart" class="w-4 h-4 ${isFav ? 'fill-current' : ''}"></i>
+              </button>
+            </div>
+          </div>`;
+      }
+
+      function folderCardHtml(node) {
+        const g = findGroupForFolder(node.path);
+        const locked = Boolean(g && !g.unlocked);
+        const subs = node.children.size;
+        const meta = locked ? 'Protegida con clave'
+          : [subs ? `${subs} ${subs === 1 ? 'carpeta' : 'carpetas'}` : '', `${node.totalCount} ${node.totalCount === 1 ? 'canción' : 'canciones'}`].filter(Boolean).join(' · ');
+        return `
+          <button type="button" data-open-folder="${escapeHtml(node.path)}" class="w-full flex items-center gap-3 px-3 py-3 mb-2 rounded-xl text-left bg-abyss-850/60 hover:bg-blue-500/10 border border-blue-500/15 transition">
+            <span class="w-11 h-11 rounded-xl ${locked ? 'bg-orange-500/20 text-orange-300' : 'bg-gradient-to-br from-orange-500/25 to-red-600/20 text-orange-400'} flex items-center justify-center shrink-0">
+              <i data-lucide="${locked ? 'lock' : 'folder'}" class="w-5 h-5"></i>
+            </span>
+            <span class="min-w-0 flex-1">
+              <span class="block text-sm sm:text-base font-semibold text-white truncate">${escapeHtml(node.name)}</span>
+              <span class="block text-xs text-blue-300/70">${meta}</span>
+            </span>
+            <i data-lucide="chevron-right" class="w-4 h-4 text-slate-500 shrink-0"></i>
+          </button>`;
+      }
+
+      function renderTracklist() {
+        sourceBadgeEl.textContent = state.sourceLabel;
+        const searching = state.searchQuery.trim() !== '';
+        const flat = searching || state.activeFolder === 'FAVORITES';
+        const atRoot = state.activeFolder === rootFolder();
+        folderBackBtn.classList.toggle('hidden', atRoot || searching);
+
+        if (flat) {
+          // Búsqueda o favoritos: lista de canciones
+          const filtered = getFilteredTracks();
+          activeFolderTitleEl.textContent = searching ? 'Resultados' : 'Favoritos';
+          activeFolderMetaEl.textContent = `${filtered.length} ${filtered.length === 1 ? 'canción' : 'canciones'}`;
+          trackListEl.innerHTML = filtered.map((t, i) => songRowHtml(t, i, true)).join('');
+          emptyStateEl.classList.toggle('hidden', filtered.length > 0);
+          return;
+        }
+
+        // Vista de carpeta: primero sus carpetas, luego sus canciones
+        const path = state.activeFolder === 'ALL' ? '' : state.activeFolder;
+        const node = findTreeNode(path) || { children: new Map(), totalCount: 0 };
+        const subfolders = Array.from(node.children.values()).sort((a, b) => a.name.localeCompare(b.name));
+        const songs = path ? state.tracks.filter(t => t.folder === path && !isFolderCurrentlyLocked(t.folder)) : [];
+        activeFolderTitleEl.textContent = path ? path.split('/').pop() : (LINK_ID ? 'Mi carpeta' : 'Mis carpetas');
+        const parts = [];
+        if (subfolders.length) parts.push(`${subfolders.length} ${subfolders.length === 1 ? 'carpeta' : 'carpetas'}`);
+        if (songs.length || !subfolders.length) parts.push(`${songs.length} ${songs.length === 1 ? 'canción' : 'canciones'}`);
+        activeFolderMetaEl.textContent = parts.join(' · ');
+        trackListEl.innerHTML = subfolders.map(folderCardHtml).join('') + songs.map((t, i) => songRowHtml(t, i, false)).join('');
+        emptyStateEl.classList.toggle('hidden', subfolders.length + songs.length > 0);
       }
 
       function updatePlayerUI() {
@@ -1536,9 +1630,8 @@
           openFolderUnlockModal(targetFolder);
           return;
         }
-        state.activeFolder = targetFolder;
-        renderAll();
         closeSidebar();
+        navigateTo(targetFolder === 'ALL' ? rootFolder() : targetFolder);
       });
 
       trackListEl.addEventListener('click', e => {
@@ -1548,6 +1641,13 @@
           toggleFavorite(favBtn.dataset.favId);
           return;
         }
+        const folderCard = e.target.closest('[data-open-folder]');
+        if (folderCard) {
+          const f = folderCard.dataset.openFolder;
+          if (isFolderCurrentlyLocked(f)) { openFolderUnlockModal(f); return; }
+          navigateTo(f);
+          return;
+        }
         const row = e.target.closest('.track-row');
         if (!row) return;
         const id = row.dataset.trackId;
@@ -1555,6 +1655,10 @@
         else loadTrack(id, true);
       });
 
+      folderBackBtn.addEventListener('click', () => {
+        if (navGuard) history.back();
+        else goUp();
+      });
       nowPlayingFavBtn.addEventListener('click', () => toggleFavorite(state.currentTrackId));
       playPauseBtn.addEventListener('click', togglePlayPause);
       nextBtn.addEventListener('click', () => playNext(false));
