@@ -1,0 +1,2204 @@
+<!DOCTYPE html>
+<html lang="es" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FolderBeats — Reproductor de Música por Subcarpetas</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://unpkg.com/lucide@0.460.0/dist/umd/lucide.min.js"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          colors: {
+            abyss: {
+              950: '#04060b',
+              900: '#090e1a',
+              850: '#0f172a',
+              800: '#16213a',
+              700: '#1e2d4f'
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background-color: #04060b;
+      color: #f1f5f9;
+      overflow-x: hidden;
+    }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #1e2d4f; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #2b4070; }
+
+    input[type="range"].player-range {
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      cursor: pointer;
+    }
+    input[type="range"].player-range::-webkit-slider-runnable-track {
+      height: 4px;
+      border-radius: 9999px;
+      background: rgba(59, 130, 246, 0.25);
+    }
+    input[type="range"].player-range::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 12px;
+      height: 12px;
+      border-radius: 9999px;
+      background: #f97316;
+      margin-top: -4px;
+      box-shadow: 0 0 8px rgba(249, 115, 22, 0.6);
+      transition: transform 0.15s ease;
+    }
+    input[type="range"].player-range:hover::-webkit-slider-thumb {
+      transform: scale(1.25);
+    }
+
+    @keyframes eqBar1 { 0%, 100% { height: 4px; } 50% { height: 14px; } }
+    @keyframes eqBar2 { 0%, 100% { height: 12px; } 50% { height: 5px; } }
+    @keyframes eqBar3 { 0%, 100% { height: 7px; } 50% { height: 16px; } }
+    .eq-playing .bar-1 { animation: eqBar1 0.7s ease-in-out infinite; }
+    .eq-playing .bar-2 { animation: eqBar2 0.55s ease-in-out infinite; }
+    .eq-playing .bar-3 { animation: eqBar3 0.8s ease-in-out infinite; }
+  </style>
+</head>
+<body class="h-screen flex flex-col bg-abyss-950 text-slate-100 select-none">
+
+  <!-- =====================================================================
+       CONFIGURACIÓN
+       - Las carpetas libres y bloqueadas se manejan desde el panel Admin.
+       - La contraseña del admin NO está escrita aquí: solo una huella
+         (PBKDF2-SHA256, 600.000 vueltas) que no permite leerla.
+       - Las carpetas bloqueadas se suben CIFRADAS (AES-256) en /privado.
+       ===================================================================== -->
+  <script>
+    window.FOLDERBEATS_CONFIG = {
+      githubUser: '',            // Ej: 'tu-usuario' (vacío = autodetección en github.io)
+      githubRepo: '',            // Ej: 'mi-musica'  (vacío = autodetección en github.io)
+      branch: 'main',            // Rama principal ('main' o 'master')
+      musicRoot: 'musica',       // Carpeta de las canciones libres
+      admin: {
+        salt: 'ZGQw+6WrJmt8VV047CnV1Q==',
+        iter: 600000,
+        hash: '6TLlKQ52T3rBROp5Afi4ghTwvVBRiqgKU1mgyUS9kQI='
+      }
+    };
+  </script>
+
+  <!-- Modal to Unlock a Specific Locked Folder -->
+  <div id="folderUnlockModal" class="fixed inset-0 z-[60] hidden items-center justify-center bg-abyss-950/90 backdrop-blur-md p-4">
+    <div class="w-full max-w-md bg-abyss-900 border border-blue-500/30 rounded-2xl p-6 shadow-2xl shadow-blue-950/60">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="w-11 h-11 rounded-2xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shadow-lg shadow-orange-600/30 shrink-0">
+            <i data-lucide="lock" class="w-5 h-5 text-white"></i>
+          </div>
+          <div class="min-w-0">
+            <h2 class="text-base font-bold text-white truncate">Carpeta Protegida</h2>
+            <p id="unlockFolderNameLabel" class="text-xs text-orange-400 font-medium truncate">Carpeta</p>
+          </div>
+        </div>
+        <button id="closeUnlockModalBtn" type="button" class="p-1.5 rounded-lg hover:bg-blue-500/15 text-slate-400">
+          <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+      </div>
+
+      <form id="unlockForm" class="space-y-4">
+        <div>
+          <label for="lockPasswordInput" class="block text-xs font-medium text-slate-300 mb-1.5">Contraseña de esta carpeta</label>
+          <div class="relative">
+            <input id="lockPasswordInput" type="password" autocomplete="current-password" placeholder="Escribe la clave..." class="w-full bg-abyss-850 border border-blue-500/30 rounded-xl pl-3.5 pr-10 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500/50" />
+            <button id="togglePwdVisibilityBtn" type="button" class="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-white" aria-label="Mostrar u ocultar contraseña">
+              <i id="togglePwdIcon" data-lucide="eye" class="w-4 h-4"></i>
+            </button>
+          </div>
+          <p id="lockErrorMsg" class="hidden text-xs text-red-400 mt-1.5 font-medium">Contraseña incorrecta. Inténtalo de nuevo.</p>
+        </div>
+
+        <label class="flex items-center gap-2 text-xs text-slate-300 cursor-pointer">
+          <input id="rememberUnlockChk" type="checkbox" checked class="rounded border-blue-500/40 bg-abyss-850 text-orange-500 focus:ring-orange-500" />
+          <span>Recordar desbloqueo en este dispositivo</span>
+        </label>
+
+        <button type="submit" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-400 hover:to-red-500 text-white font-semibold text-sm transition shadow-lg shadow-red-600/25">
+          Desbloquear carpeta
+        </button>
+      </form>
+    </div>
+  </div>
+
+
+  <!-- Drag & Drop Overlay -->
+  <div id="dropOverlay" class="fixed inset-0 z-50 hidden items-center justify-center bg-abyss-950/90 backdrop-blur-md border-2 border-dashed border-orange-500 m-3 rounded-2xl pointer-events-none">
+    <div class="text-center p-8">
+      <div class="w-16 h-16 mx-auto mb-4 rounded-2xl bg-orange-500/15 text-orange-400 flex items-center justify-center">
+        <i data-lucide="folder-plus" class="w-8 h-8"></i>
+      </div>
+      <h2 class="text-xl font-bold text-white mb-1">Suelta tus carpetas o subcarpetas de audio</h2>
+      <p class="text-sm text-blue-200/70">Se guardan automáticamente para escuchar sin conexión</p>
+    </div>
+  </div>
+
+  <!-- Top Header -->
+  <header class="shrink-0 h-16 border-b border-blue-500/20 bg-abyss-900/95 backdrop-blur-md px-3 sm:px-5 flex items-center justify-between gap-3 z-30">
+    <div class="flex items-center gap-2.5 min-w-0">
+      <button id="mobileMenuBtn" type="button" class="lg:hidden p-2 rounded-lg hover:bg-blue-500/15 text-slate-300" aria-label="Abrir carpetas">
+        <i data-lucide="menu" class="w-5 h-5"></i>
+      </button>
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500 to-red-600 flex items-center justify-center shrink-0 shadow-lg shadow-red-600/25">
+        <i data-lucide="disc-3" class="w-5 h-5 text-white"></i>
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-2">
+          <h1 class="font-bold text-base sm:text-lg tracking-tight text-white truncate">FolderBeats</h1>
+          <span id="sourceBadge" class="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-blue-500/15 text-blue-300 border border-blue-500/30 truncate max-w-[170px]">
+            Demo integrada
+          </span>
+          <span id="offlineBadge" class="hidden md:inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium bg-orange-500/15 text-orange-300 border border-orange-500/30">
+            <i data-lucide="hard-drive" class="w-3 h-3"></i>
+            <span id="offlineCountText">Offline: 0</span>
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Search -->
+    <div class="flex-1 max-w-md hidden md:block">
+      <div class="relative">
+        <i data-lucide="search" class="w-4 h-4 text-blue-300/60 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+        <input id="searchInput" type="search" placeholder="Buscar canción o subcarpeta..." class="w-full bg-abyss-850 border border-blue-500/25 rounded-xl pl-9 pr-3 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-orange-500/70 focus:ring-1 focus:ring-orange-500/40 transition" />
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex items-center gap-1.5 sm:gap-2 shrink-0">
+      <label class="cursor-pointer inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-400 hover:to-red-500 text-white text-xs sm:text-sm font-semibold transition shadow-md shadow-red-600/20" title="Cargar una carpeta con subcarpetas desde tu dispositivo">
+        <i data-lucide="folder-open" class="w-4 h-4"></i>
+        <span class="hidden sm:inline">Subir carpeta</span>
+        <input id="folderInput" type="file" webkitdirectory directory multiple class="hidden" />
+      </label>
+
+      <label class="cursor-pointer inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-abyss-800 hover:bg-abyss-700 border border-blue-500/25 text-xs sm:text-sm font-medium text-slate-100 transition" title="Agregar archivos sueltos">
+        <i data-lucide="music" class="w-4 h-4 text-orange-400"></i>
+        <span class="hidden xl:inline">Archivos</span>
+        <input id="filesInput" type="file" multiple accept="audio/*" class="hidden" />
+      </label>
+
+      <button id="openAdminBtn" type="button" class="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-abyss-800 hover:bg-abyss-700 border border-blue-500/25 text-slate-100 text-xs sm:text-sm font-medium transition" title="Panel de administrador">
+        <i data-lucide="shield" class="w-4 h-4 text-orange-400"></i>
+        <span class="hidden sm:inline">Admin</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <div class="flex-1 flex min-h-0 relative">
+
+    <!-- Sidebar Backdrop (Mobile) -->
+    <div id="sidebarBackdrop" class="fixed inset-0 bg-black/70 z-30 hidden lg:hidden"></div>
+
+    <!-- Left Sidebar: Nested Subfolders -->
+    <aside id="sidebar" class="fixed lg:static inset-y-0 left-0 z-40 w-72 bg-abyss-900 border-r border-blue-500/20 flex flex-col transform -translate-x-full lg:translate-x-0 transition-transform duration-200">
+      <div class="p-4 border-b border-blue-500/20 flex items-center justify-between">
+        <span class="text-xs font-semibold uppercase tracking-wider text-blue-300 flex items-center gap-1.5">
+          <i data-lucide="folder-tree" class="w-3.5 h-3.5 text-orange-400"></i>
+          Carpetas y Subcarpetas
+        </span>
+        <button id="closeSidebarBtn" type="button" class="lg:hidden p-1 rounded-lg hover:bg-blue-500/15 text-slate-400" aria-label="Cerrar menú">
+          <i data-lucide="x" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- Mobile Search -->
+      <div class="p-3 md:hidden border-b border-blue-500/20">
+        <div class="relative">
+          <i data-lucide="search" class="w-4 h-4 text-blue-300/60 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+          <input id="mobileSearchInput" type="search" placeholder="Buscar canción..." class="w-full bg-abyss-850 border border-blue-500/25 rounded-xl pl-9 pr-3 py-1.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-orange-500" />
+        </div>
+      </div>
+
+      <nav id="folderList" class="flex-1 overflow-y-auto p-2.5 space-y-1">
+        <!-- Rendered by JS -->
+      </nav>
+
+      <!-- Visualizer Card -->
+      <div class="p-3 border-t border-blue-500/20 bg-abyss-950/60">
+        <div class="flex items-center justify-between mb-1.5">
+          <span class="text-[11px] font-medium text-blue-300/80">Espectro en vivo</span>
+          <span id="audioStatusLabel" class="text-[11px] text-orange-400 font-medium">Listo</span>
+        </div>
+        <canvas id="visualizerCanvas" width="240" height="52" class="w-full h-[52px] rounded-lg bg-abyss-900 border border-blue-500/15"></canvas>
+        <button id="clearOfflineBtn" type="button" class="mt-2 w-full inline-flex items-center justify-center gap-1.5 text-[11px] text-slate-400 hover:text-red-300 transition">
+          <i data-lucide="trash-2" class="w-3 h-3"></i> Limpiar caché offline
+        </button>
+      </div>
+    </aside>
+
+    <!-- Main Tracklist Panel -->
+    <main class="flex-1 flex flex-col min-w-0 bg-gradient-to-b from-abyss-900/70 via-abyss-950 to-abyss-950 overflow-y-auto">
+      <!-- Folder Hero Banner -->
+      <div class="p-4 sm:p-6 border-b border-blue-500/15 bg-gradient-to-r from-blue-950/60 via-abyss-900/80 to-orange-950/30">
+        <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+          <div class="flex items-center gap-4 min-w-0">
+            <div class="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-orange-500/25 to-red-600/25 border border-orange-500/35 flex items-center justify-center shrink-0 shadow-xl">
+              <i data-lucide="folder-open" class="w-8 h-8 sm:w-10 sm:h-10 text-orange-400"></i>
+            </div>
+            <div class="min-w-0">
+              <p class="text-xs font-medium uppercase tracking-wider text-orange-400 mb-0.5">Ruta activa</p>
+              <h2 id="activeFolderTitle" class="text-xl sm:text-2xl font-bold text-white truncate">Todas las canciones</h2>
+              <p id="activeFolderMeta" class="text-xs sm:text-sm text-blue-200/70 mt-0.5">0 canciones</p>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2 shrink-0">
+            <button id="playAllBtn" type="button" class="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-400 hover:to-red-500 text-white font-semibold text-sm transition shadow-lg shadow-red-600/25">
+              <i data-lucide="play" class="w-4 h-4 fill-current"></i>
+              <span>Reproducir todo</span>
+            </button>
+            <button id="shuffleAllBtn" type="button" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-full bg-abyss-800 hover:bg-abyss-700 border border-blue-500/30 text-slate-100 font-medium text-sm transition">
+              <i data-lucide="shuffle" class="w-4 h-4 text-orange-400"></i>
+              <span>Aleatorio</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Track List -->
+      <div class="flex-1 p-3 sm:p-5">
+        <div class="hidden sm:grid grid-cols-[40px_1fr_180px_80px_44px] gap-3 px-3 pb-2 text-xs font-medium uppercase tracking-wider text-blue-300/60 border-b border-blue-500/15">
+          <span class="text-center">#</span>
+          <span>Canción</span>
+          <span>Subcarpeta</span>
+          <span class="text-right">Duración</span>
+          <span></span>
+        </div>
+
+        <div id="trackList" class="divide-y divide-blue-500/10 mt-1">
+          <!-- Rendered by JS -->
+        </div>
+
+        <div id="emptyState" class="hidden py-16 text-center max-w-md mx-auto">
+          <div class="w-14 h-14 mx-auto mb-3 rounded-2xl bg-abyss-850 border border-blue-500/20 flex items-center justify-center text-orange-400">
+            <i data-lucide="music-2" class="w-7 h-7"></i>
+          </div>
+          <h3 class="text-base font-semibold text-white mb-1">No hay canciones aquí</h3>
+          <p class="text-sm text-slate-400 mb-4">Prueba otro término de búsqueda o sube una carpeta con tus archivos de audio.</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- Bottom Persistent Player Bar -->
+  <footer class="shrink-0 border-t border-blue-500/25 bg-abyss-900/95 backdrop-blur-lg px-3 sm:px-5 py-2.5 z-30">
+    <div class="max-w-7xl mx-auto flex flex-col md:flex-row items-center gap-2.5 md:gap-4">
+
+      <!-- Track Info -->
+      <div class="w-full md:w-1/3 flex items-center gap-3 min-w-0">
+        <div id="nowPlayingArt" class="w-11 h-11 rounded-xl bg-gradient-to-br from-orange-500/30 to-red-600/25 border border-orange-500/30 flex items-center justify-center shrink-0">
+          <i data-lucide="music" class="w-5 h-5 text-orange-400"></i>
+        </div>
+        <div class="min-w-0 flex-1">
+          <p id="nowPlayingTitle" class="text-sm font-semibold text-white truncate">Selecciona una canción</p>
+          <p id="nowPlayingFolder" class="text-xs text-blue-300/75 truncate">FolderBeats</p>
+        </div>
+        <button id="nowPlayingFavBtn" type="button" class="p-2 rounded-lg hover:bg-blue-500/15 text-slate-400 transition shrink-0" aria-label="Marcar favorito">
+          <i data-lucide="heart" class="w-4 h-4"></i>
+        </button>
+      </div>
+
+      <!-- Center Controls & Progress -->
+      <div class="w-full md:w-1/3 flex flex-col items-center gap-1.5">
+        <div class="flex items-center gap-3 sm:gap-4">
+          <button id="shuffleBtn" type="button" class="p-1.5 rounded-lg text-slate-400 hover:text-white transition" title="Aleatorio">
+            <i data-lucide="shuffle" class="w-4 h-4"></i>
+          </button>
+          <button id="prevBtn" type="button" class="p-1.5 rounded-lg text-slate-300 hover:text-white transition" title="Anterior">
+            <i data-lucide="skip-back" class="w-5 h-5 fill-current"></i>
+          </button>
+          <button id="playPauseBtn" type="button" class="w-10 h-10 rounded-full bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-400 hover:to-red-500 text-white flex items-center justify-center transition shadow-lg shadow-red-600/30" title="Reproducir / Pausar">
+            <i id="playPauseIcon" data-lucide="play" class="w-5 h-5 fill-current ml-0.5"></i>
+          </button>
+          <button id="nextBtn" type="button" class="p-1.5 rounded-lg text-slate-300 hover:text-white transition" title="Siguiente">
+            <i data-lucide="skip-forward" class="w-5 h-5 fill-current"></i>
+          </button>
+          <button id="repeatBtn" type="button" class="p-1.5 rounded-lg text-slate-400 hover:text-white transition relative" title="Repetir">
+            <i data-lucide="repeat" class="w-4 h-4"></i>
+            <span id="repeatOneBadge" class="hidden absolute -top-0.5 -right-0.5 w-3.5 h-3.5 rounded-full bg-red-500 text-white text-[9px] font-bold flex items-center justify-center">1</span>
+          </button>
+        </div>
+
+        <div class="w-full flex items-center gap-2 text-[11px] text-blue-200/70 tabular-nums">
+          <span id="currentTimeLabel" class="w-9 text-right">0:00</span>
+          <input id="progressRange" type="range" min="0" max="100" value="0" step="0.1" class="player-range flex-1" aria-label="Progreso de reproducción" />
+          <span id="durationLabel" class="w-9">0:00</span>
+        </div>
+      </div>
+
+      <!-- Volume -->
+      <div class="hidden md:flex w-1/3 items-center justify-end gap-2">
+        <button id="muteBtn" type="button" class="p-1.5 rounded-lg text-slate-400 hover:text-white transition" title="Silenciar">
+          <i id="volumeIcon" data-lucide="volume-2" class="w-4 h-4"></i>
+        </button>
+        <input id="volumeRange" type="range" min="0" max="1" step="0.01" value="0.85" class="player-range w-24" aria-label="Volumen" />
+      </div>
+    </div>
+  </footer>
+
+  <!-- Panel de Administrador -->
+  <div id="adminModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+    <div class="bg-abyss-900 border border-blue-500/25 rounded-2xl w-full max-w-2xl max-h-[92vh] overflow-y-auto shadow-2xl select-text">
+      <div class="p-5 border-b border-blue-500/20 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-red-600 text-white flex items-center justify-center">
+            <i data-lucide="shield" class="w-4 h-4"></i>
+          </div>
+          <div>
+            <h3 class="font-bold text-white text-base">Panel de Administrador</h3>
+            <p class="text-xs text-blue-300/75">Elige qué carpetas quedan libres y cuáles con contraseña</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-1">
+          <button id="adminLogoutBtn" type="button" class="hidden px-2.5 py-1.5 rounded-lg text-xs text-slate-300 hover:bg-blue-500/15">Salir</button>
+          <button id="closeAdminBtn" type="button" class="p-1.5 rounded-lg hover:bg-blue-500/15 text-slate-400">
+            <i data-lucide="x" class="w-5 h-5"></i>
+          </button>
+        </div>
+      </div>
+
+      <!-- Paso: entrar -->
+      <form id="adminLoginForm" class="p-5 space-y-3">
+        <label for="adminPwdInput" class="block text-xs font-medium text-slate-300">Contraseña de administrador</label>
+        <input id="adminPwdInput" type="password" autocomplete="current-password" class="w-full bg-abyss-850 border border-blue-500/30 rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-orange-500" />
+        <p id="adminLoginError" class="hidden text-xs text-red-400 font-medium">Contraseña incorrecta.</p>
+        <button id="adminLoginBtn" type="submit" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-400 hover:to-red-500 text-white font-semibold text-sm transition">Entrar</button>
+      </form>
+
+      <!-- Paso: trabajar -->
+      <div id="adminWork" class="hidden p-5 space-y-5">
+        <div class="space-y-2">
+          <h4 class="text-sm font-semibold text-white">1. Carpeta del repositorio</h4>
+          <p class="text-xs text-slate-400">La carpeta que subes a GitHub (la que tiene este <code class="text-slate-200">index.html</code>).</p>
+          <div class="flex flex-wrap items-center gap-2">
+            <button id="adminPickRepoBtn" type="button" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-abyss-800 hover:bg-abyss-700 border border-blue-500/30 text-sm text-white"><i data-lucide="folder-git-2" class="w-4 h-4 text-orange-400"></i>Elegir carpeta del repositorio</button>
+            <span id="adminRepoLabel" class="text-xs text-blue-300/80">Sin elegir</span>
+          </div>
+        </div>
+
+        <div class="space-y-2 border-t border-blue-500/20 pt-4">
+          <h4 class="text-sm font-semibold text-white">2. Carpeta con tu música original</h4>
+          <p class="text-xs text-slate-400">Debe estar <strong class="text-slate-200">fuera</strong> del repositorio, para que las canciones bloqueadas nunca se suban sin cifrar. Cada subcarpeta será una carpeta del reproductor.</p>
+          <div class="flex flex-wrap items-center gap-2">
+            <button id="adminPickSourceBtn" type="button" class="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-abyss-800 hover:bg-abyss-700 border border-blue-500/30 text-sm text-white"><i data-lucide="folder-open" class="w-4 h-4 text-orange-400"></i>Elegir carpeta de música</button>
+            <span id="adminSourceLabel" class="text-xs text-blue-300/80">Sin elegir</span>
+          </div>
+        </div>
+
+        <div class="space-y-2 border-t border-blue-500/20 pt-4">
+          <h4 class="text-sm font-semibold text-white">3. Libres o bloqueadas</h4>
+          <p class="text-xs text-slate-400">Una carpeta bloqueada también bloquea sus subcarpetas. Comparte su contraseña solo con quien quieras.</p>
+          <div id="adminFolderList" class="space-y-1.5"><p class="text-xs text-slate-500">Elige primero las dos carpetas.</p></div>
+        </div>
+
+        <div class="space-y-2 border-t border-blue-500/20 pt-4">
+          <h4 class="text-sm font-semibold text-white">4. Preparar para GitHub</h4>
+          <button id="adminPublishBtn" type="button" disabled class="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-orange-500 to-red-600 hover:from-orange-400 hover:to-red-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-sm transition"><i data-lucide="upload-cloud" class="w-4 h-4"></i>Guardar cambios en el repositorio</button>
+          <div id="adminProgressWrap" class="hidden">
+            <div class="h-2 rounded-full bg-abyss-800 overflow-hidden"><div id="adminProgressBar" class="h-full w-0 bg-gradient-to-r from-orange-500 to-red-600 transition-all"></div></div>
+          </div>
+          <pre id="adminLog" class="hidden bg-abyss-950 border border-blue-500/20 rounded-xl p-3 text-[11px] text-blue-200 max-h-48 overflow-y-auto whitespace-pre-wrap"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toastContainer" class="fixed top-20 right-4 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- Real HTML5 Audio Element -->
+  <audio id="audioPlayer" crossorigin="anonymous" preload="metadata"></audio>
+
+  <script>
+    (function () {
+      'use strict';
+
+      const AUDIO_EXTS = new Set(['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus', 'webm']);
+      const FAV_STORAGE_KEY = 'folderbeats_favorites_v3';
+      const KEYS_STORAGE_KEY = 'folderbeats_llaves_v4'; // llaves de carpetas desbloqueadas en este dispositivo
+      const IDB_NAME = 'folderbeats_offline_db';
+      const IDB_VERSION = 1;
+      const STORE_TRACKS = 'offline_tracks';
+
+      const state = {
+        tracks: [],           // { id, title, folder, url, duration, isLocal, isDemo, relPath, cachedOffline }
+        activeFolder: 'ALL',  // 'ALL' | 'FAVORITES' | folderPath
+        expandedFolders: new Set(),
+        lockedGroups: [],     // carpetas bloqueadas de biblioteca.json { id, nombre, salt, iter, iv, datos, unlocked, key }
+        pendingUnlockFolder: null,
+        searchQuery: '',
+        currentTrackId: null,
+        isPlaying: false,
+        shuffle: false,
+        repeatMode: 'off',    // 'off' | 'all' | 'one'
+        favorites: new Set(),
+        sourceLabel: 'Demo integrada',
+        audioCtx: null,
+        analyser: null,
+        sourceNode: null,
+        vizRaf: null,
+        objectUrls: [],
+        db: null
+      };
+
+      // DOM Elements
+      const audio = document.getElementById('audioPlayer');
+      const folderUnlockModal = document.getElementById('folderUnlockModal');
+      const closeUnlockModalBtn = document.getElementById('closeUnlockModalBtn');
+      const unlockFolderNameLabel = document.getElementById('unlockFolderNameLabel');
+      const unlockForm = document.getElementById('unlockForm');
+      const lockPasswordInput = document.getElementById('lockPasswordInput');
+      const lockErrorMsg = document.getElementById('lockErrorMsg');
+      const rememberUnlockChk = document.getElementById('rememberUnlockChk');
+      const togglePwdVisibilityBtn = document.getElementById('togglePwdVisibilityBtn');
+      const togglePwdIcon = document.getElementById('togglePwdIcon');
+
+
+      const folderListEl = document.getElementById('folderList');
+      const trackListEl = document.getElementById('trackList');
+      const emptyStateEl = document.getElementById('emptyState');
+      const activeFolderTitleEl = document.getElementById('activeFolderTitle');
+      const activeFolderMetaEl = document.getElementById('activeFolderMeta');
+      const sourceBadgeEl = document.getElementById('sourceBadge');
+      const offlineCountText = document.getElementById('offlineCountText');
+      const searchInputEl = document.getElementById('searchInput');
+      const mobileSearchInputEl = document.getElementById('mobileSearchInput');
+      const folderInputEl = document.getElementById('folderInput');
+      const filesInputEl = document.getElementById('filesInput');
+      const playPauseBtn = document.getElementById('playPauseBtn');
+      const playPauseIcon = document.getElementById('playPauseIcon');
+      const prevBtn = document.getElementById('prevBtn');
+      const nextBtn = document.getElementById('nextBtn');
+      const shuffleBtn = document.getElementById('shuffleBtn');
+      const repeatBtn = document.getElementById('repeatBtn');
+      const repeatOneBadge = document.getElementById('repeatOneBadge');
+      const progressRange = document.getElementById('progressRange');
+      const currentTimeLabel = document.getElementById('currentTimeLabel');
+      const durationLabel = document.getElementById('durationLabel');
+      const volumeRange = document.getElementById('volumeRange');
+      const muteBtn = document.getElementById('muteBtn');
+      const volumeIcon = document.getElementById('volumeIcon');
+      const nowPlayingTitle = document.getElementById('nowPlayingTitle');
+      const nowPlayingFolder = document.getElementById('nowPlayingFolder');
+      const nowPlayingFavBtn = document.getElementById('nowPlayingFavBtn');
+      const playAllBtn = document.getElementById('playAllBtn');
+      const shuffleAllBtn = document.getElementById('shuffleAllBtn');
+      const sidebar = document.getElementById('sidebar');
+      const sidebarBackdrop = document.getElementById('sidebarBackdrop');
+      const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+      const closeSidebarBtn = document.getElementById('closeSidebarBtn');
+      const dropOverlay = document.getElementById('dropOverlay');
+      const clearOfflineBtn = document.getElementById('clearOfflineBtn');
+      const adminModal = document.getElementById('adminModal');
+      const openAdminBtn = document.getElementById('openAdminBtn');
+      const closeAdminBtn = document.getElementById('closeAdminBtn');
+      const adminLogoutBtn = document.getElementById('adminLogoutBtn');
+      const adminLoginForm = document.getElementById('adminLoginForm');
+      const adminPwdInput = document.getElementById('adminPwdInput');
+      const adminLoginError = document.getElementById('adminLoginError');
+      const adminLoginBtn = document.getElementById('adminLoginBtn');
+      const adminWork = document.getElementById('adminWork');
+      const adminPickRepoBtn = document.getElementById('adminPickRepoBtn');
+      const adminRepoLabel = document.getElementById('adminRepoLabel');
+      const adminPickSourceBtn = document.getElementById('adminPickSourceBtn');
+      const adminSourceLabel = document.getElementById('adminSourceLabel');
+      const adminFolderList = document.getElementById('adminFolderList');
+      const adminPublishBtn = document.getElementById('adminPublishBtn');
+      const adminProgressWrap = document.getElementById('adminProgressWrap');
+      const adminProgressBar = document.getElementById('adminProgressBar');
+      const adminLog = document.getElementById('adminLog');
+      const visualizerCanvas = document.getElementById('visualizerCanvas');
+      const audioStatusLabel = document.getElementById('audioStatusLabel');
+      const toastContainer = document.getElementById('toastContainer');
+
+      // Load saved state safely
+      try {
+        const savedFavs = localStorage.getItem(FAV_STORAGE_KEY);
+        if (savedFavs) JSON.parse(savedFavs).forEach(id => state.favorites.add(id));
+      } catch (e) {}
+
+      function saveFavorites() {
+        try { localStorage.setItem(FAV_STORAGE_KEY, JSON.stringify(Array.from(state.favorites))); } catch (e) {}
+      }
+
+      // ===================== Cifrado (Web Crypto) =====================
+      const TE = new TextEncoder();
+      const TD = new TextDecoder();
+      const FOLDER_ITER = 250000;
+
+      function toB64(buf) {
+        const b = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+        let s = '';
+        for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode.apply(null, b.subarray(i, i + 0x8000));
+        return btoa(s);
+      }
+      function fromB64(str) {
+        return Uint8Array.from(atob(str), c => c.charCodeAt(0));
+      }
+      function randomBytes(n) {
+        return crypto.getRandomValues(new Uint8Array(n));
+      }
+      async function sha256Hex(text) {
+        const d = await crypto.subtle.digest('SHA-256', TE.encode(text));
+        return Array.from(new Uint8Array(d)).map(x => x.toString(16).padStart(2, '0')).join('');
+      }
+      async function pbkdf2Bits(password, saltBytes, iterations, bits) {
+        const base = await crypto.subtle.importKey('raw', TE.encode(password), 'PBKDF2', false, ['deriveBits']);
+        return new Uint8Array(await crypto.subtle.deriveBits({ name: 'PBKDF2', salt: saltBytes, iterations, hash: 'SHA-256' }, base, bits));
+      }
+      function importAesKey(raw) {
+        return crypto.subtle.importKey('raw', raw, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+      }
+      async function aesEncrypt(key, data) {
+        const iv = randomBytes(12);
+        const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, data);
+        return { iv, ct: new Uint8Array(ct) };
+      }
+      async function aesDecrypt(key, iv, data) {
+        return new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, data));
+      }
+      async function folderRawKey(password, saltB64, iter) {
+        return pbkdf2Bits(password, fromB64(saltB64), iter || FOLDER_ITER, 256);
+      }
+      function cryptoAvailable() {
+        return Boolean(window.crypto && crypto.subtle);
+      }
+
+      // ===================== Carpetas bloqueadas (visitantes) =====================
+      function loadSavedKeys() {
+        try { return JSON.parse(localStorage.getItem(KEYS_STORAGE_KEY) || '{}') || {}; } catch (e) { return {}; }
+      }
+      function saveKeyForGroup(group, rawKey) {
+        try {
+          const all = loadSavedKeys();
+          all[group.id] = { salt: group.salt, k: toB64(rawKey) };
+          localStorage.setItem(KEYS_STORAGE_KEY, JSON.stringify(all));
+        } catch (e) {}
+      }
+
+      function findGroupForFolder(folderPath) {
+        if (!folderPath || folderPath === 'ALL' || folderPath === 'FAVORITES') return null;
+        return state.lockedGroups.find(g => folderPath === g.nombre || folderPath.startsWith(g.nombre + '/')) || null;
+      }
+      function isFolderCurrentlyLocked(folderPath) {
+        const g = findGroupForFolder(folderPath);
+        return Boolean(g && !g.unlocked);
+      }
+
+      // Intenta abrir una carpeta bloqueada con una llave. Devuelve true si la llave es correcta.
+      async function unlockGroupWithRawKey(group, rawKey) {
+        try {
+          const key = await importAesKey(rawKey);
+          const plain = await aesDecrypt(key, fromB64(group.iv), fromB64(group.datos));
+          const list = JSON.parse(TD.decode(plain));
+          group.key = key;
+          group.unlocked = true;
+          setTimeout(markCachedTracks, 0);
+          list.forEach(item => {
+            const id = `enc-${item.file}`;
+            if (state.tracks.some(t => t.id === id)) return;
+            state.tracks.push({
+              id,
+              title: item.title,
+              folder: item.folder,
+              url: null,
+              remoteUrl: `./privado/${item.file}.bin`,
+              enc: { file: item.file, iv: item.iv, type: item.type || '' },
+              groupId: group.id,
+              duration: item.duration || null,
+              isLocal: false,
+              isDemo: false,
+              cachedOffline: false,
+              relPath: ''
+            });
+          });
+          return true;
+        } catch (e) {
+          return false;
+        }
+      }
+
+      async function restoreSavedUnlocks() {
+        const saved = loadSavedKeys();
+        for (const g of state.lockedGroups) {
+          const s = saved[g.id];
+          if (s && s.salt === g.salt && s.k) await unlockGroupWithRawKey(g, fromB64(s.k));
+        }
+      }
+
+      function openFolderUnlockModal(folderPath) {
+        const g = findGroupForFolder(folderPath);
+        if (!g || g.unlocked) return;
+        state.pendingUnlockFolder = g.id;
+        unlockFolderNameLabel.textContent = g.nombre;
+        lockErrorMsg.classList.add('hidden');
+        lockPasswordInput.value = '';
+        folderUnlockModal.classList.remove('hidden');
+        folderUnlockModal.classList.add('flex');
+        setTimeout(() => lockPasswordInput.focus(), 50);
+      }
+
+      function closeFolderUnlockModal() {
+        folderUnlockModal.classList.add('hidden');
+        folderUnlockModal.classList.remove('flex');
+        state.pendingUnlockFolder = null;
+      }
+
+      closeUnlockModalBtn.addEventListener('click', closeFolderUnlockModal);
+      folderUnlockModal.addEventListener('click', e => {
+        if (e.target === folderUnlockModal) closeFolderUnlockModal();
+      });
+
+      unlockForm.addEventListener('submit', async e => {
+        e.preventDefault();
+        const g = state.lockedGroups.find(x => x.id === state.pendingUnlockFolder);
+        if (!g) return;
+        if (!cryptoAvailable()) {
+          showToast('Este navegador no permite descifrar. Abre la página con https.', 'error');
+          return;
+        }
+        const submitBtn = unlockForm.querySelector('button[type="submit"]');
+        submitBtn.disabled = true;
+        lockErrorMsg.classList.add('hidden');
+        try {
+          const raw = await folderRawKey(lockPasswordInput.value, g.salt, g.iter);
+          const ok = await unlockGroupWithRawKey(g, raw);
+          if (ok) {
+            if (rememberUnlockChk.checked) saveKeyForGroup(g, raw);
+            const top = g.nombre.split('/')[0];
+            if (top) state.expandedFolders.add(top);
+            state.activeFolder = g.nombre;
+            closeFolderUnlockModal();
+            renderAll();
+            showToast(`Carpeta "${g.nombre}" desbloqueada.`, 'success');
+          } else {
+            lockErrorMsg.classList.remove('hidden');
+          }
+        } finally {
+          submitBtn.disabled = false;
+        }
+      });
+
+      togglePwdVisibilityBtn.addEventListener('click', () => {
+        const isPwd = lockPasswordInput.type === 'password';
+        lockPasswordInput.type = isPwd ? 'text' : 'password';
+        togglePwdIcon.setAttribute('data-lucide', isPwd ? 'eye-off' : 'eye');
+        if (window.lucide) lucide.createIcons();
+      });
+
+
+      // IndexedDB Offline Storage
+      function openOfflineDB() {
+        return new Promise(resolve => {
+          if (!window.indexedDB) return resolve(null);
+          try {
+            const req = indexedDB.open(IDB_NAME, IDB_VERSION);
+            req.onupgradeneeded = e => {
+              const db = e.target.result;
+              if (!db.objectStoreNames.contains(STORE_TRACKS)) {
+                db.createObjectStore(STORE_TRACKS, { keyPath: 'id' });
+              }
+            };
+            req.onsuccess = () => {
+              state.db = req.result;
+              resolve(state.db);
+            };
+            req.onerror = () => resolve(null);
+          } catch (e) { resolve(null); }
+        });
+      }
+
+      async function saveTrackToOfflineDB(trackObj, blob) {
+        if (!state.db || !blob) return;
+        try {
+          const tx = state.db.transaction(STORE_TRACKS, 'readwrite');
+          tx.objectStore(STORE_TRACKS).put({
+            id: trackObj.id,
+            title: trackObj.title,
+            folder: trackObj.folder,
+            relPath: trackObj.relPath,
+            duration: trackObj.duration,
+            enc: trackObj.enc ? { ...trackObj.enc, groupId: trackObj.groupId } : null,
+            blob
+          });
+          trackObj.cachedOffline = true;
+          updateOfflineCounter();
+        } catch (e) {}
+      }
+
+      function loadOfflineTracksFromDB() {
+        return new Promise(resolve => {
+          if (!state.db) return resolve([]);
+          try {
+            const tx = state.db.transaction(STORE_TRACKS, 'readonly');
+            const req = tx.objectStore(STORE_TRACKS).getAll();
+            req.onsuccess = () => resolve(req.result || []);
+            req.onerror = () => resolve([]);
+          } catch (e) { resolve([]); }
+        });
+      }
+
+      function getOfflineRecord(id) {
+        return new Promise(resolve => {
+          if (!state.db) return resolve(null);
+          try {
+            const req = state.db.transaction(STORE_TRACKS, 'readonly').objectStore(STORE_TRACKS).get(id);
+            req.onsuccess = () => resolve(req.result || null);
+            req.onerror = () => resolve(null);
+          } catch (e) { resolve(null); }
+        });
+      }
+
+      function getOfflineIds() {
+        return new Promise(resolve => {
+          if (!state.db) return resolve(new Set());
+          try {
+            const req = state.db.transaction(STORE_TRACKS, 'readonly').objectStore(STORE_TRACKS).getAllKeys();
+            req.onsuccess = () => resolve(new Set(req.result || []));
+            req.onerror = () => resolve(new Set());
+          } catch (e) { resolve(new Set()); }
+        });
+      }
+
+      // Marca con el punto naranja las canciones que ya están guardadas en el dispositivo
+      async function markCachedTracks() {
+        const ids = await getOfflineIds();
+        state.tracks.forEach(t => { if (t.remoteUrl) t.cachedOffline = ids.has(t.id); });
+        updateOfflineCounter();
+        renderTracklist();
+        if (window.lucide) lucide.createIcons();
+      }
+
+      async function clearOfflineDB() {
+        if (!state.db) return;
+        try {
+          const tx = state.db.transaction(STORE_TRACKS, 'readwrite');
+          tx.objectStore(STORE_TRACKS).clear();
+          state.tracks.forEach(t => { t.cachedOffline = false; });
+          updateOfflineCounter();
+          renderTracklist();
+          showToast('Caché sin conexión vaciada.', 'info');
+        } catch (e) {}
+      }
+
+      function updateOfflineCounter() {
+        const count = state.tracks.filter(t => t.cachedOffline).length;
+        offlineCountText.textContent = `Offline: ${count}`;
+      }
+
+      clearOfflineBtn.addEventListener('click', clearOfflineDB);
+
+      function showToast(message, type = 'info') {
+        const colors = {
+          info: 'bg-abyss-800 border-blue-500/30 text-slate-100',
+          success: 'bg-orange-950/95 border-orange-500/50 text-orange-100',
+          error: 'bg-red-950/95 border-red-500/50 text-red-100'
+        };
+        const el = document.createElement('div');
+        el.className = `pointer-events-auto px-4 py-2.5 rounded-xl border text-xs sm:text-sm font-medium shadow-xl transition-all duration-300 ${colors[type] || colors.info}`;
+        el.textContent = message;
+        toastContainer.appendChild(el);
+        setTimeout(() => {
+          el.style.opacity = '0';
+          setTimeout(() => el.remove(), 300);
+        }, 3200);
+      }
+
+      function formatTime(sec) {
+        if (!Number.isFinite(sec) || sec < 0) return '0:00';
+        const m = Math.floor(sec / 60);
+        const s = Math.floor(sec % 60);
+        return `${m}:${s < 10 ? '0' : ''}${s}`;
+      }
+
+      function cleanTitle(filename) {
+        return filename.replace(/\.[^/.]+$/, '').replace(/[_-]+/g, ' ').trim();
+      }
+
+      function isAudioFile(name) {
+        const ext = name.split('.').pop().toLowerCase();
+        return AUDIO_EXTS.has(ext);
+      }
+
+      function createSynthWavBlob(notes, bpm = 92, waveform = 'sine') {
+        const sampleRate = 22050;
+        const beatDur = 60 / bpm;
+        const totalSec = notes.length * beatDur;
+        const numSamples = Math.floor(sampleRate * totalSec);
+        const buffer = new ArrayBuffer(44 + numSamples * 2);
+        const view = new DataView(buffer);
+
+        function writeStr(offset, str) {
+          for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+        }
+        writeStr(0, 'RIFF');
+        view.setUint32(4, 36 + numSamples * 2, true);
+        writeStr(8, 'WAVE');
+        writeStr(12, 'fmt ');
+        view.setUint32(16, 16, true);
+        view.setUint16(20, 1, true);
+        view.setUint16(22, 1, true);
+        view.setUint32(24, sampleRate, true);
+        view.setUint32(28, sampleRate * 2, true);
+        view.setUint16(32, 2, true);
+        view.setUint16(34, 16, true);
+        writeStr(36, 'data');
+        view.setUint32(40, numSamples * 2, true);
+
+        let offset = 44;
+        for (let i = 0; i < numSamples; i++) {
+          const t = i / sampleRate;
+          const noteIdx = Math.min(notes.length - 1, Math.floor(t / beatDur));
+          const localT = t - noteIdx * beatDur;
+          const freq = notes[noteIdx];
+          const env = Math.min(1, localT * 18) * Math.exp(-localT * 2.4);
+
+          let sample = 0;
+          if (freq > 0) {
+            const p = 2 * Math.PI * freq * t;
+            if (waveform === 'warm') {
+              sample = (Math.sin(p) * 0.6 + Math.sin(p * 1.5) * 0.25 + Math.sin(p * 2) * 0.15) * env;
+            } else if (waveform === 'synth') {
+              sample = (Math.sin(p) * 0.5 + (Math.sin(p * 2) > 0 ? 0.15 : -0.15)) * env;
+            } else {
+              sample = (Math.sin(p) * 0.7 + Math.sin(p * 0.5) * 0.3) * env;
+            }
+          }
+          const clamped = Math.max(-1, Math.min(1, sample * 0.45));
+          view.setInt16(offset, clamped * 32767, true);
+          offset += 2;
+        }
+        return new Blob([buffer], { type: 'audio/wav' });
+      }
+
+      function loadDemoLibrary() {
+        revokeObjectUrls();
+        const demos = [
+          { title: 'Brisa Nocturna (Demo)', folder: 'Electrónica/Lo-Fi', notes: [261.63, 329.63, 392.00, 493.88, 392.00, 329.63, 293.66, 349.23, 440.00, 349.23, 293.66, 246.94], bpm: 84, wave: 'warm' },
+          { title: 'Café de Domingo (Demo)', folder: 'Electrónica/Lo-Fi', notes: [220.00, 261.63, 329.63, 392.00, 329.63, 261.63, 196.00, 246.94, 293.66, 392.00, 293.66, 246.94], bpm: 76, wave: 'warm' },
+          { title: 'Horizonte Neón (Demo)', folder: 'Electrónica/Synthwave', notes: [130.81, 130.81, 196.00, 164.81, 146.83, 146.83, 220.00, 196.00, 130.81, 164.81, 261.63, 196.00], bpm: 112, wave: 'synth' },
+          { title: 'Ruta Estelar (Demo)', folder: 'Electrónica/Synthwave', notes: [174.61, 220.00, 261.63, 349.23, 261.63, 220.00, 164.81, 196.00, 246.94, 329.63, 246.94, 196.00], bpm: 118, wave: 'synth' },
+          { title: 'Cuerdas al Alba (Demo)', folder: 'Acústico/Guitarra', notes: [329.63, 392.00, 440.00, 523.25, 440.00, 392.00, 293.66, 349.23, 392.00, 440.00, 349.23, 293.66], bpm: 88, wave: 'sine' }
+        ];
+
+        state.tracks = demos.map((d, idx) => {
+          const blob = createSynthWavBlob(d.notes, d.bpm, d.wave);
+          const url = URL.createObjectURL(blob);
+          state.objectUrls.push(url);
+          return {
+            id: `demo-${idx}`,
+            title: d.title,
+            folder: d.folder,
+            url,
+            duration: (d.notes.length * 60) / d.bpm,
+            isLocal: false,
+            isDemo: true,
+            cachedOffline: true,
+            relPath: `musica/${d.folder}/${d.title}.wav`
+          };
+        });
+
+        state.expandedFolders.add('Electrónica');
+        state.expandedFolders.add('Acústico');
+        state.sourceLabel = 'Demo integrada';
+        state.activeFolder = 'ALL';
+        const unlockedList = getFilteredTracks();
+        state.currentTrackId = unlockedList[0]?.id || null;
+        if (state.currentTrackId) loadTrack(state.currentTrackId, false);
+        updateOfflineCounter();
+        renderAll();
+      }
+
+      function revokeObjectUrls() {
+        state.objectUrls.forEach(u => { try { URL.revokeObjectURL(u); } catch (e) {} });
+        state.objectUrls = [];
+      }
+
+      async function handleLocalFiles(fileList) {
+        const files = Array.from(fileList).filter(f => isAudioFile(f.name));
+        if (files.length === 0) {
+          showToast('No se encontraron archivos de audio compatibles (MP3, WAV, OGG, M4A, FLAC).', 'error');
+          return;
+        }
+
+        revokeObjectUrls();
+        const newTracks = [];
+        for (let idx = 0; idx < files.length; idx++) {
+          const file = files[idx];
+          const rel = file.webkitRelativePath || file.name;
+          const parts = rel.split('/').filter(Boolean);
+          let folder = 'Archivos sueltos';
+          if (parts.length >= 2) {
+            folder = parts.length === 2 ? parts[0] : parts.slice(1, -1).join('/');
+          }
+          const url = URL.createObjectURL(file);
+          state.objectUrls.push(url);
+          const trackObj = {
+            id: `local-${rel}`,
+            title: cleanTitle(file.name),
+            folder,
+            url,
+            duration: null,
+            isLocal: true,
+            isDemo: false,
+            cachedOffline: false,
+            relPath: rel
+          };
+          await saveTrackToOfflineDB(trackObj, file);
+          newTracks.push(trackObj);
+          const topFolder = folder.split('/')[0];
+          if (topFolder) state.expandedFolders.add(topFolder);
+        }
+
+        state.tracks = newTracks;
+        state.sourceLabel = `Offline local (${newTracks.length})`;
+        state.activeFolder = 'ALL';
+        updateOfflineCounter();
+        renderAll();
+        const visible = getFilteredTracks();
+        if (visible.length > 0) loadTrack(visible[0].id, true);
+        showToast(`${newTracks.length} canciones guardadas automáticamente sin conexión.`, 'success');
+      }
+
+      async function tryAutoLoadHostedMusic() {
+        const cfg = window.FOLDERBEATS_CONFIG || {};
+        let user = (cfg.githubUser || '').trim();
+        let repo = (cfg.githubRepo || '').trim();
+        const branch = (cfg.branch || 'main').trim();
+        const musicRoot = (cfg.musicRoot || 'musica').trim();
+
+        if (window.location.protocol.startsWith('http')) {
+          try {
+            const res = await fetch('./biblioteca.json', { cache: 'no-store' });
+            if (res.ok) {
+              const lib = await res.json();
+              if (lib && (Array.isArray(lib.libres) || Array.isArray(lib.bloqueadas))) {
+                await applyLibrary(lib);
+                return true;
+              }
+            }
+          } catch (e) {}
+          try {
+            const res = await fetch('./songs.json', { cache: 'no-store' });
+            if (res.ok) {
+              const data = await res.json();
+              if (Array.isArray(data) && data.length > 0) {
+                applyRemoteTracks(data, 'songs.json', './');
+                return true;
+              }
+            }
+          } catch (e) {}
+        }
+
+        if (!user && window.location.hostname.endsWith('.github.io')) {
+          user = window.location.hostname.split('.')[0];
+          const pathParts = window.location.pathname.split('/').filter(Boolean);
+          repo = pathParts[0] || `${user}.github.io`;
+        }
+
+        if (user && repo) {
+          const ok = await fetchFromGitHubApi(user, repo, branch, musicRoot, true);
+          if (ok) return true;
+        }
+
+        return false;
+      }
+
+      async function applyLibrary(lib) {
+        state.lockedGroups = (lib.bloqueadas || []).map(g => ({ ...g, unlocked: false, key: null }));
+        const items = (lib.libres || []).map(t => ({
+          title: t.title,
+          folder: t.folder,
+          path: t.path,
+          url: './' + String(t.path).split('/').map(encodeURIComponent).join('/'),
+          duration: t.duration || null
+        }));
+        applyRemoteTracks(items, 'Mi biblioteca', './', true);
+        if (state.lockedGroups.length && cryptoAvailable()) {
+          await restoreSavedUnlocks();
+          state.lockedGroups.forEach(g => {
+            if (g.unlocked) { const top = g.nombre.split('/')[0]; if (top) state.expandedFolders.add(top); }
+          });
+        }
+        renderAll();
+        const visible = getFilteredTracks();
+        if (visible.length > 0 && !state.currentTrackId) loadTrack(visible[0].id, false);
+      }
+
+      function applyRemoteTracks(items, label, basePrefix, deferFirstLoad = false) {
+        revokeObjectUrls();
+        state.tracks = items.map((item, idx) => {
+          const folder = (item.folder || 'General').replace(/\\/g, '/').replace(/^\/+|\/+$/g, '');
+          const topFolder = folder.split('/')[0];
+          if (topFolder) state.expandedFolders.add(topFolder);
+          return {
+            id: `gh-${item.path || item.url || idx}`,
+            title: item.title || cleanTitle((item.path || '').split('/').pop() || `Pista ${idx + 1}`),
+            folder,
+            url: item.url || (basePrefix + encodeURI(item.path)),
+            remoteUrl: item.url || (basePrefix + encodeURI(item.path)),
+            duration: item.duration || null,
+            isLocal: false,
+            isDemo: false,
+            cachedOffline: false,
+            relPath: item.path || ''
+          };
+        });
+        state.sourceLabel = label;
+        state.activeFolder = 'ALL';
+        state.currentTrackId = null;
+        updateOfflineCounter();
+        renderAll();
+        markCachedTracks();
+        if (deferFirstLoad) return;
+        const visible = getFilteredTracks();
+        if (visible.length > 0) loadTrack(visible[0].id, false);
+      }
+
+      async function fetchFromGitHubApi(user, repo, branch, musicRoot, silent = false) {
+        const cleanRoot = musicRoot.replace(/^\/+|\/+$/g, '');
+        const branchesToTry = branch ? [branch, branch === 'main' ? 'master' : 'main'] : ['main', 'master'];
+
+        for (const br of branchesToTry) {
+          try {
+            const apiUrl = `https://api.github.com/repos/${encodeURIComponent(user)}/${encodeURIComponent(repo)}/git/trees/${encodeURIComponent(br)}?recursive=1`;
+            const res = await fetch(apiUrl);
+            if (!res.ok) continue;
+            const data = await res.json();
+            if (!data.tree) continue;
+
+            const audioNodes = data.tree.filter(node => {
+              if (node.type !== 'blob') return false;
+              if (!isAudioFile(node.path)) return false;
+              if (cleanRoot && !node.path.startsWith(cleanRoot + '/')) return false;
+              return true;
+            });
+
+            if (audioNodes.length === 0) continue;
+
+            const items = audioNodes.map(node => {
+              let subPath = cleanRoot ? node.path.slice(cleanRoot.length + 1) : node.path;
+              const parts = subPath.split('/');
+              const fileName = parts.pop();
+              const folder = parts.length > 0 ? parts.join('/') : (cleanRoot || 'Raíz');
+              const rawUrl = `https://raw.githubusercontent.com/${encodeURIComponent(user)}/${encodeURIComponent(repo)}/${encodeURIComponent(br)}/${node.path.split('/').map(encodeURIComponent).join('/')}`;
+              return { title: cleanTitle(fileName), folder, path: node.path, url: rawUrl };
+            });
+
+            applyRemoteTracks(items, `GitHub: ${user}/${repo}`, '');
+            if (!silent) {
+              showToast(`Cargadas ${items.length} canciones desde ${user}/${repo}.`, 'success');
+            }
+            return true;
+          } catch (e) {}
+        }
+
+        if (!silent) showToast('No se encontraron audios en ese repositorio.', 'error');
+        return false;
+      }
+
+      // Build Hierarchical Subfolder Tree
+      function buildFolderTree() {
+        const root = { children: new Map(), directCount: 0, totalCount: 0 };
+        state.tracks.forEach(t => {
+          const parts = t.folder.split('/').filter(Boolean);
+          let node = root;
+          let accPath = '';
+          parts.forEach((part, idx) => {
+            accPath = accPath ? `${accPath}/${part}` : part;
+            if (!node.children.has(part)) {
+              node.children.set(part, { name: part, path: accPath, children: new Map(), directCount: 0, totalCount: 0 });
+            }
+            node = node.children.get(part);
+            node.totalCount++;
+            if (idx === parts.length - 1) node.directCount++;
+          });
+        });
+        // Carpetas bloqueadas aún sin abrir: se muestran con candado
+        state.lockedGroups.filter(g => !g.unlocked).forEach(g => {
+          let node = root;
+          let accPath = '';
+          g.nombre.split('/').filter(Boolean).forEach(part => {
+            accPath = accPath ? `${accPath}/${part}` : part;
+            if (!node.children.has(part)) {
+              node.children.set(part, { name: part, path: accPath, children: new Map(), directCount: 0, totalCount: 0 });
+            }
+            node = node.children.get(part);
+          });
+        });
+        return root;
+      }
+
+      function renderFolderTreeNodes(node, depth = 0) {
+        let html = '';
+        const sorted = Array.from(node.children.values()).sort((a, b) => a.name.localeCompare(b.name));
+        sorted.forEach(child => {
+          const hasChildren = child.children.size > 0;
+          const isExpanded = state.expandedFolders.has(child.path);
+          const isActive = state.activeFolder === child.path;
+          const lockGroup = findGroupForFolder(child.path);
+          const lockInfo = lockGroup ? { isUnlocked: lockGroup.unlocked } : null;
+          const isLocked = Boolean(lockInfo && !lockInfo.isUnlocked);
+          const padLeft = 10 + depth * 14;
+
+          let lockIconHtml = '';
+          if (lockInfo) {
+            lockIconHtml = lockInfo.isUnlocked
+              ? `<i data-lucide="unlock" class="w-3.5 h-3.5 text-emerald-400 shrink-0" title="Desbloqueada"></i>`
+              : `<i data-lucide="lock" class="w-3.5 h-3.5 text-orange-400 shrink-0" title="Protegida con contraseña"></i>`;
+          }
+
+          html += `
+            <div>
+              <div class="flex items-center gap-1 rounded-xl pr-1 transition ${
+                isActive ? 'bg-gradient-to-r from-orange-500/20 to-red-600/15 border border-orange-500/40' : 'hover:bg-blue-500/10 border border-transparent'
+              }" style="padding-left: ${padLeft}px;">
+                ${hasChildren
+                  ? `<button type="button" data-toggle-folder="${escapeHtml(child.path)}" class="toggle-folder-btn p-1 rounded text-blue-300/70 hover:text-white shrink-0" aria-label="Expandir subcarpeta">
+                       <i data-lucide="${isExpanded ? 'chevron-down' : 'chevron-right'}" class="w-3.5 h-3.5"></i>
+                     </button>`
+                  : `<span class="w-5 shrink-0"></span>`
+                }
+                <button type="button" data-folder-id="${escapeHtml(child.path)}" class="folder-btn flex-1 flex items-center justify-between gap-2 py-2 text-left text-sm min-w-0 ${
+                  isActive ? 'text-orange-300 font-semibold' : 'text-slate-300 hover:text-white'
+                }">
+                  <span class="flex items-center gap-2 min-w-0">
+                    <i data-lucide="${hasChildren && isExpanded ? 'folder-open' : 'folder'}" class="w-4 h-4 shrink-0 ${isActive ? 'text-orange-400' : 'text-blue-400/80'}"></i>
+                    <span class="truncate">${escapeHtml(child.name)}</span>
+                  </span>
+                  <span class="flex items-center gap-1.5 shrink-0">
+                    ${lockIconHtml}
+                    <span class="text-[11px] px-2 py-0.5 rounded-full ${isActive ? 'bg-orange-500/25 text-orange-200' : 'bg-abyss-800 text-blue-300/70'}">${isLocked ? '•••' : child.totalCount}</span>
+                  </span>
+                </button>
+              </div>
+              ${hasChildren && isExpanded ? `<div class="mt-0.5 space-y-0.5">${renderFolderTreeNodes(child, depth + 1)}</div>` : ''}
+            </div>
+          `;
+        });
+        return html;
+      }
+
+      function getFilteredTracks() {
+        const q = state.searchQuery.trim().toLowerCase();
+        return state.tracks.filter(t => {
+          // Never expose tracks from a locked folder until unlocked
+          if (isFolderCurrentlyLocked(t.folder)) return false;
+          if (state.activeFolder === 'FAVORITES' && !state.favorites.has(t.id)) return false;
+          if (state.activeFolder !== 'ALL' && state.activeFolder !== 'FAVORITES') {
+            if (t.folder !== state.activeFolder && !t.folder.startsWith(state.activeFolder + '/')) return false;
+          }
+          if (q && !t.title.toLowerCase().includes(q) && !t.folder.toLowerCase().includes(q)) return false;
+          return true;
+        });
+      }
+
+      function renderFolders() {
+        const accessibleTracks = state.tracks.filter(t => !isFolderCurrentlyLocked(t.folder));
+        const favCount = accessibleTracks.filter(t => state.favorites.has(t.id)).length;
+        const topItems = [
+          { id: 'ALL', label: 'Todas las canciones', icon: 'library', count: accessibleTracks.length },
+          { id: 'FAVORITES', label: 'Favoritos', icon: 'heart', count: favCount }
+        ];
+
+        let html = topItems.map(item => {
+          const isActive = state.activeFolder === item.id;
+          return `
+            <button type="button" data-folder-id="${escapeHtml(item.id)}"
+              class="folder-btn w-full flex items-center justify-between gap-2.5 px-3 py-2.5 rounded-xl text-left text-sm transition ${
+                isActive
+                  ? 'bg-gradient-to-r from-orange-500/20 to-red-600/15 text-orange-300 font-semibold border border-orange-500/40'
+                  : 'text-slate-300 hover:bg-blue-500/10 hover:text-white border border-transparent'
+              }">
+              <span class="flex items-center gap-2.5 min-w-0">
+                <i data-lucide="${item.icon}" class="w-4 h-4 shrink-0 ${isActive ? 'text-orange-400' : 'text-blue-400/80'}"></i>
+                <span class="truncate">${escapeHtml(item.label)}</span>
+              </span>
+              <span class="text-xs px-2 py-0.5 rounded-full ${isActive ? 'bg-orange-500/25 text-orange-200' : 'bg-abyss-800 text-blue-300/70'}">${item.count}</span>
+            </button>
+          `;
+        }).join('');
+
+        html += `<div class="pt-2 pb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-blue-400/60">Subcarpetas</div>`;
+        html += renderFolderTreeNodes(buildFolderTree(), 0);
+        folderListEl.innerHTML = html;
+      }
+
+      function renderTracklist() {
+        const filtered = getFilteredTracks();
+        sourceBadgeEl.textContent = state.sourceLabel;
+
+        let title = state.activeFolder;
+        if (state.activeFolder === 'ALL') title = 'Todas las canciones';
+        if (state.activeFolder === 'FAVORITES') title = 'Favoritos';
+        activeFolderTitleEl.textContent = title;
+        activeFolderMetaEl.textContent = `${filtered.length} ${filtered.length === 1 ? 'canción' : 'canciones'}`;
+
+
+        if (filtered.length === 0) {
+          trackListEl.innerHTML = '';
+          emptyStateEl.classList.remove('hidden');
+        } else {
+          emptyStateEl.classList.add('hidden');
+          trackListEl.innerHTML = filtered.map((track, index) => {
+            const isCurrent = track.id === state.currentTrackId;
+            const isFav = state.favorites.has(track.id);
+            const durText = track.duration ? formatTime(track.duration) : '--:--';
+            return `
+              <div data-track-id="${escapeHtml(track.id)}"
+                class="track-row group grid grid-cols-[36px_1fr_44px] sm:grid-cols-[40px_1fr_180px_80px_44px] items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer transition ${
+                  isCurrent ? 'bg-gradient-to-r from-orange-500/15 to-red-600/10 text-orange-200 border border-orange-500/25' : 'hover:bg-blue-500/10 text-slate-200 border border-transparent'
+                }">
+                <div class="flex items-center justify-center text-xs tabular-nums">
+                  ${isCurrent && state.isPlaying
+                    ? `<div class="eq-playing flex items-end gap-0.5 h-4">
+                         <span class="bar-1 w-1 bg-orange-400 rounded-full"></span>
+                         <span class="bar-2 w-1 bg-red-500 rounded-full"></span>
+                         <span class="bar-3 w-1 bg-orange-400 rounded-full"></span>
+                       </div>`
+                    : `<span class="${isCurrent ? 'text-orange-400 font-bold' : 'text-slate-500 group-hover:hidden'}">${index + 1}</span>
+                       <i data-lucide="play" class="w-3.5 h-3.5 text-orange-400 fill-current hidden ${isCurrent ? '' : 'group-hover:block'}"></i>`
+                  }
+                </div>
+                <div class="min-w-0 flex items-center gap-2">
+                  <div class="min-w-0">
+                    <p class="text-sm font-medium truncate ${isCurrent ? 'text-orange-300' : 'text-white'}">${escapeHtml(track.title)}</p>
+                    <p class="text-xs text-blue-300/70 truncate sm:hidden">${escapeHtml(track.folder)}</p>
+                  </div>
+                  ${track.cachedOffline ? `<span title="Disponible sin conexión" class="shrink-0 w-2 h-2 rounded-full bg-orange-400"></span>` : ''}
+                </div>
+                <div class="hidden sm:flex items-center gap-1.5 text-xs text-blue-300/75 truncate">
+                  <i data-lucide="folder" class="w-3.5 h-3.5 text-blue-400/60 shrink-0"></i>
+                  <span class="truncate">${escapeHtml(track.folder)}</span>
+                </div>
+                <div class="hidden sm:block text-right text-xs text-slate-400 tabular-nums">${durText}</div>
+                <div class="flex items-center justify-end">
+                  <button type="button" data-fav-id="${escapeHtml(track.id)}" class="fav-btn p-1.5 rounded-lg hover:bg-blue-500/15 transition ${isFav ? 'text-red-500' : 'text-slate-500 hover:text-slate-200'}" aria-label="Favorito">
+                    <i data-lucide="heart" class="w-4 h-4 ${isFav ? 'fill-current' : ''}"></i>
+                  </button>
+                </div>
+              </div>
+            `;
+          }).join('');
+        }
+      }
+
+      function updatePlayerUI() {
+        const current = state.tracks.find(t => t.id === state.currentTrackId);
+        if (current) {
+          nowPlayingTitle.textContent = current.title;
+          nowPlayingFolder.textContent = current.folder;
+          const isFav = state.favorites.has(current.id);
+          nowPlayingFavBtn.classList.toggle('text-red-500', isFav);
+          nowPlayingFavBtn.classList.toggle('text-slate-400', !isFav);
+        } else {
+          nowPlayingTitle.textContent = 'Selecciona una canción';
+          nowPlayingFolder.textContent = 'FolderBeats';
+        }
+
+        playPauseIcon.setAttribute('data-lucide', state.isPlaying ? 'pause' : 'play');
+        playPauseIcon.classList.toggle('ml-0.5', !state.isPlaying);
+        audioStatusLabel.textContent = state.isPlaying ? 'Reproduciendo' : 'Pausado';
+
+        shuffleBtn.classList.toggle('text-orange-400', state.shuffle);
+        shuffleBtn.classList.toggle('text-slate-400', !state.shuffle);
+
+        repeatBtn.classList.toggle('text-orange-400', state.repeatMode !== 'off');
+        repeatBtn.classList.toggle('text-slate-400', state.repeatMode === 'off');
+        repeatOneBadge.classList.toggle('hidden', state.repeatMode !== 'one');
+
+        if (window.lucide) lucide.createIcons();
+      }
+
+      function renderAll() {
+        renderFolders();
+        renderTracklist();
+        updatePlayerUI();
+      }
+
+      function escapeHtml(str) {
+        return String(str)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
+
+      function ensureAudioContext() {
+        if (state.audioCtx) {
+          if (state.audioCtx.state === 'suspended') state.audioCtx.resume().catch(() => {});
+          return;
+        }
+        try {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (!AudioCtx) return;
+          state.audioCtx = new AudioCtx();
+          state.analyser = state.audioCtx.createAnalyser();
+          state.analyser.fftSize = 64;
+          state.sourceNode = state.audioCtx.createMediaElementSource(audio);
+          state.sourceNode.connect(state.analyser);
+          state.analyser.connect(state.audioCtx.destination);
+        } catch (e) { state.analyser = null; }
+      }
+
+      function drawVisualizer() {
+        const ctx = visualizerCanvas.getContext('2d');
+        const w = visualizerCanvas.width;
+        const h = visualizerCanvas.height;
+        ctx.clearRect(0, 0, w, h);
+
+        const bars = 24;
+        const barW = (w - (bars - 1) * 3) / bars;
+
+        if (state.analyser && state.isPlaying) {
+          const data = new Uint8Array(state.analyser.frequencyBinCount);
+          state.analyser.getByteFrequencyData(data);
+          for (let i = 0; i < bars; i++) {
+            const val = data[i] || 0;
+            const barH = Math.max(3, (val / 255) * (h - 8));
+            const grad = ctx.createLinearGradient(0, h, 0, h - barH);
+            grad.addColorStop(0, '#ef4444');
+            grad.addColorStop(1, '#f97316');
+            ctx.fillStyle = grad;
+            ctx.fillRect(i * (barW + 3), h - barH - 2, barW, barH);
+          }
+        } else {
+          for (let i = 0; i < bars; i++) {
+            const idleH = state.isPlaying ? 6 + Math.abs(Math.sin(Date.now() / 220 + i)) * 20 : 4;
+            ctx.fillStyle = state.isPlaying ? '#f97316' : '#1e2d4f';
+            ctx.fillRect(i * (barW + 3), h - idleH - 2, barW, idleH);
+          }
+        }
+
+        state.vizRaf = requestAnimationFrame(drawVisualizer);
+      }
+
+      // Descarga automática: al escuchar una canción se guarda en el dispositivo
+      const downloading = new Set();
+      async function cacheRemoteTrackOffline(track) {
+        if (track.cachedOffline || !track.remoteUrl || track.enc || downloading.has(track.id)) return;
+        downloading.add(track.id);
+        try {
+          const res = await fetch(track.remoteUrl);
+          if (!res.ok) return;
+          const blob = await res.blob();
+          await saveTrackToOfflineDB(track, blob);
+          renderTracklist();
+          if (window.lucide) lucide.createIcons();
+        } catch (e) {} finally {
+          downloading.delete(track.id);
+        }
+      }
+
+      const NOT_DOWNLOADED = 'NOT_DOWNLOADED';
+      let playbackBlobUrl = null;
+      let loadToken = 0;
+
+      function usePlaybackBlob(blob) {
+        if (playbackBlobUrl) { try { URL.revokeObjectURL(playbackBlobUrl); } catch (e) {} }
+        playbackBlobUrl = URL.createObjectURL(blob);
+        return playbackBlobUrl;
+      }
+
+      // Decide de dónde sale el audio: memoria del dispositivo o internet
+      async function resolvePlayable(track) {
+        if (!track.remoteUrl) return { url: track.url };          // demo o archivos locales
+        const rec = await getOfflineRecord(track.id);
+        if (track.enc) {
+          const g = state.lockedGroups.find(x => x.id === track.groupId);
+          if (!g || !g.key) throw new Error('locked');
+          let data;
+          if (rec && rec.blob) {
+            data = new Uint8Array(await rec.blob.arrayBuffer());
+          } else {
+            let res;
+            try { res = await fetch(track.remoteUrl); } catch (e) { throw NOT_DOWNLOADED; }
+            if (!res.ok) throw NOT_DOWNLOADED;
+            const buf = await res.arrayBuffer();
+            data = new Uint8Array(buf);
+            // Se guarda cifrada: en el celular solo se abre con la contraseña de la carpeta
+            await saveTrackToOfflineDB(track, new Blob([buf]));
+          }
+          const plain = await aesDecrypt(g.key, fromB64(track.enc.iv), data);
+          return { url: usePlaybackBlob(new Blob([plain], track.enc.type ? { type: track.enc.type } : undefined)) };
+        }
+        if (rec && rec.blob) {
+          track.cachedOffline = true;
+          return { url: usePlaybackBlob(rec.blob) };
+        }
+        if (!navigator.onLine) throw NOT_DOWNLOADED;
+        return { url: track.remoteUrl, cacheAfter: true };
+      }
+
+      function notifyNotDownloaded() {
+        showToast('Esta canción aún no está descargada. Conéctate a internet una vez para escucharla y quedará guardada para oírla sin internet.', 'error');
+      }
+
+      function loadTrack(trackId, autoplay = true) {
+        const track = state.tracks.find(t => t.id === trackId);
+        if (!track) return;
+        const token = ++loadToken;
+
+        state.currentTrackId = track.id;
+        progressRange.value = 0;
+        currentTimeLabel.textContent = '0:00';
+        durationLabel.textContent = track.duration ? formatTime(track.duration) : '0:00';
+        if (autoplay) audioStatusLabel.textContent = track.enc ? 'Descifrando...' : 'Cargando...';
+        renderTracklist();
+        updatePlayerUI();
+
+        resolvePlayable(track).then(({ url, cacheAfter }) => {
+          if (token !== loadToken) return;
+          audio.src = url;
+          audio.load();
+          if (autoplay) {
+            ensureAudioContext();
+            audio.play().then(() => {
+              state.isPlaying = true;
+              renderTracklist();
+              updatePlayerUI();
+              if (cacheAfter) cacheRemoteTrackOffline(track);
+            }).catch(err => {
+              state.isPlaying = false;
+              updatePlayerUI();
+              if (err && err.name === 'NotAllowedError') {
+                audioStatusLabel.textContent = 'Toca reproducir';
+              } else if (err && err.name !== 'AbortError') {
+                if (!navigator.onLine && !track.cachedOffline) notifyNotDownloaded();
+                else showToast('No se pudo reproducir este archivo de audio.', 'error');
+              }
+            });
+          } else {
+            state.isPlaying = false;
+            renderTracklist();
+            updatePlayerUI();
+          }
+        }).catch(err => {
+          if (token !== loadToken) return;
+          state.isPlaying = false;
+          updatePlayerUI();
+          if (err === NOT_DOWNLOADED) {
+            audioStatusLabel.textContent = 'Sin descargar';
+            if (autoplay) notifyNotDownloaded();
+          } else if (autoplay) {
+            showToast('No se pudo abrir esta canción.', 'error');
+          }
+        });
+      }
+
+      function togglePlayPause() {
+        if (!state.currentTrackId) {
+          const list = getFilteredTracks();
+          if (list.length > 0) loadTrack(list[0].id, true);
+          return;
+        }
+        if (!audio.currentSrc) {
+          loadTrack(state.currentTrackId, true);
+          return;
+        }
+        if (audio.paused) {
+          ensureAudioContext();
+          audio.play().then(() => {
+            state.isPlaying = true;
+            renderTracklist();
+            updatePlayerUI();
+          }).catch(() => {});
+        } else {
+          audio.pause();
+          state.isPlaying = false;
+          renderTracklist();
+          updatePlayerUI();
+        }
+      }
+
+      function playNext(fromEnded = false) {
+        if (fromEnded && state.repeatMode === 'one') {
+          audio.currentTime = 0;
+          audio.play().catch(() => {});
+          return;
+        }
+        let list = getFilteredTracks();
+        if (!navigator.onLine) {
+          const playable = list.filter(t => !t.remoteUrl || t.cachedOffline || t.id === state.currentTrackId);
+          if (playable.length > 0) list = playable;
+        }
+        if (list.length === 0) return;
+
+        if (state.shuffle) {
+          const pool = list.length > 1 ? list.filter(t => t.id !== state.currentTrackId) : list;
+          loadTrack(pool[Math.floor(Math.random() * pool.length)].id, true);
+          return;
+        }
+
+        const idx = list.findIndex(t => t.id === state.currentTrackId);
+        if (idx === -1) loadTrack(list[0].id, true);
+        else if (idx + 1 < list.length) loadTrack(list[idx + 1].id, true);
+        else if (state.repeatMode === 'all' || !fromEnded) loadTrack(list[0].id, true);
+        else {
+          state.isPlaying = false;
+          renderTracklist();
+          updatePlayerUI();
+        }
+      }
+
+      function playPrev() {
+        if (audio.currentTime > 3) {
+          audio.currentTime = 0;
+          return;
+        }
+        const list = getFilteredTracks();
+        if (list.length === 0) return;
+        const idx = list.findIndex(t => t.id === state.currentTrackId);
+        loadTrack(list[idx <= 0 ? list.length - 1 : idx - 1].id, true);
+      }
+
+      function toggleFavorite(trackId) {
+        if (!trackId) return;
+        if (state.favorites.has(trackId)) state.favorites.delete(trackId);
+        else state.favorites.add(trackId);
+        saveFavorites();
+        renderAll();
+      }
+
+      function closeSidebar() {
+        sidebar.classList.add('-translate-x-full');
+        sidebarBackdrop.classList.add('hidden');
+      }
+
+      // Event Listeners
+      folderListEl.addEventListener('click', e => {
+        const toggleBtn = e.target.closest('.toggle-folder-btn');
+        if (toggleBtn) {
+          const path = toggleBtn.dataset.toggleFolder;
+          if (state.expandedFolders.has(path)) state.expandedFolders.delete(path);
+          else state.expandedFolders.add(path);
+          renderFolders();
+          if (window.lucide) lucide.createIcons();
+          return;
+        }
+        const btn = e.target.closest('.folder-btn');
+        if (!btn) return;
+        const targetFolder = btn.dataset.folderId;
+        if (isFolderCurrentlyLocked(targetFolder)) {
+          openFolderUnlockModal(targetFolder);
+          return;
+        }
+        state.activeFolder = targetFolder;
+        renderAll();
+        closeSidebar();
+      });
+
+      trackListEl.addEventListener('click', e => {
+        const favBtn = e.target.closest('.fav-btn');
+        if (favBtn) {
+          e.stopPropagation();
+          toggleFavorite(favBtn.dataset.favId);
+          return;
+        }
+        const row = e.target.closest('.track-row');
+        if (!row) return;
+        const id = row.dataset.trackId;
+        if (id === state.currentTrackId) togglePlayPause();
+        else loadTrack(id, true);
+      });
+
+      nowPlayingFavBtn.addEventListener('click', () => toggleFavorite(state.currentTrackId));
+      playPauseBtn.addEventListener('click', togglePlayPause);
+      nextBtn.addEventListener('click', () => playNext(false));
+      prevBtn.addEventListener('click', playPrev);
+
+      shuffleBtn.addEventListener('click', () => {
+        state.shuffle = !state.shuffle;
+        updatePlayerUI();
+      });
+
+      repeatBtn.addEventListener('click', () => {
+        const order = ['off', 'all', 'one'];
+        state.repeatMode = order[(order.indexOf(state.repeatMode) + 1) % order.length];
+        updatePlayerUI();
+      });
+
+      playAllBtn.addEventListener('click', () => {
+        const list = getFilteredTracks();
+        if (list.length > 0) {
+          state.shuffle = false;
+          loadTrack(list[0].id, true);
+        }
+      });
+
+      shuffleAllBtn.addEventListener('click', () => {
+        const list = getFilteredTracks();
+        if (list.length > 0) {
+          state.shuffle = true;
+          loadTrack(list[Math.floor(Math.random() * list.length)].id, true);
+        }
+      });
+
+      audio.addEventListener('loadedmetadata', () => {
+        const current = state.tracks.find(t => t.id === state.currentTrackId);
+        if (current && Number.isFinite(audio.duration)) {
+          current.duration = audio.duration;
+          durationLabel.textContent = formatTime(audio.duration);
+          renderTracklist();
+          if (window.lucide) lucide.createIcons();
+        }
+      });
+
+      audio.addEventListener('timeupdate', () => {
+        if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+        progressRange.value = (audio.currentTime / audio.duration) * 100;
+        currentTimeLabel.textContent = formatTime(audio.currentTime);
+      });
+
+      audio.addEventListener('ended', () => playNext(true));
+      // Cada vez que suena una canción de internet, se descarga sola al dispositivo
+      audio.addEventListener('playing', () => {
+        const t = state.tracks.find(x => x.id === state.currentTrackId);
+        if (t && navigator.onLine) cacheRemoteTrackOffline(t);
+      });
+      audio.addEventListener('error', () => {
+        const t = state.tracks.find(x => x.id === state.currentTrackId);
+        if (!t || !t.remoteUrl || !audio.currentSrc || audio.currentSrc.startsWith('blob:')) return;
+        state.isPlaying = false;
+        updatePlayerUI();
+        if (!t.cachedOffline) notifyNotDownloaded();
+      });
+      window.addEventListener('offline', () => showToast('Sin internet: puedes escuchar las canciones ya descargadas (punto naranja).', 'info'));
+      window.addEventListener('online', () => showToast('Conectado de nuevo.', 'success'));
+
+      progressRange.addEventListener('input', () => {
+        if (!Number.isFinite(audio.duration) || audio.duration <= 0) return;
+        audio.currentTime = (Number(progressRange.value) / 100) * audio.duration;
+      });
+
+      audio.volume = Number(volumeRange.value);
+      volumeRange.addEventListener('input', () => {
+        audio.volume = Number(volumeRange.value);
+        audio.muted = audio.volume === 0;
+        volumeIcon.setAttribute('data-lucide', audio.muted ? 'volume-x' : 'volume-2');
+        if (window.lucide) lucide.createIcons();
+      });
+
+      muteBtn.addEventListener('click', () => {
+        audio.muted = !audio.muted;
+        volumeIcon.setAttribute('data-lucide', audio.muted ? 'volume-x' : 'volume-2');
+        if (window.lucide) lucide.createIcons();
+      });
+
+      function handleSearch(val) {
+        state.searchQuery = val;
+        searchInputEl.value = val;
+        mobileSearchInputEl.value = val;
+        renderTracklist();
+        if (window.lucide) lucide.createIcons();
+      }
+      searchInputEl.addEventListener('input', e => handleSearch(e.target.value));
+      mobileSearchInputEl.addEventListener('input', e => handleSearch(e.target.value));
+
+      folderInputEl.addEventListener('change', e => {
+        if (e.target.files.length) handleLocalFiles(e.target.files);
+        e.target.value = '';
+      });
+      filesInputEl.addEventListener('change', e => {
+        if (e.target.files.length) handleLocalFiles(e.target.files);
+        e.target.value = '';
+      });
+
+      let dragCounter = 0;
+      window.addEventListener('dragenter', e => {
+        e.preventDefault();
+        dragCounter++;
+        dropOverlay.classList.remove('hidden');
+        dropOverlay.classList.add('flex');
+      });
+      window.addEventListener('dragleave', e => {
+        e.preventDefault();
+        dragCounter--;
+        if (dragCounter <= 0) {
+          dragCounter = 0;
+          dropOverlay.classList.add('hidden');
+          dropOverlay.classList.remove('flex');
+        }
+      });
+      window.addEventListener('dragover', e => e.preventDefault());
+      window.addEventListener('drop', e => {
+        e.preventDefault();
+        dragCounter = 0;
+        dropOverlay.classList.add('hidden');
+        dropOverlay.classList.remove('flex');
+        if (e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files.length) {
+          handleLocalFiles(e.dataTransfer.files);
+        }
+      });
+
+      mobileMenuBtn.addEventListener('click', () => {
+        sidebar.classList.remove('-translate-x-full');
+        sidebarBackdrop.classList.remove('hidden');
+      });
+      closeSidebarBtn.addEventListener('click', closeSidebar);
+      sidebarBackdrop.addEventListener('click', closeSidebar);
+
+      // ===================== Panel de Administrador =====================
+      const admin = {
+        vaultKey: null,
+        repo: null,
+        source: null,
+        files: [],          // { rel, folder, name, handle, size, mtime }
+        folders: [],        // rutas de carpetas
+        prevLib: null,      // biblioteca.json anterior
+        conf: {},           // { carpeta: { locked, pwd } }
+        busy: false
+      };
+      const MIME_BY_EXT = { mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4', aac: 'audio/aac', flac: 'audio/flac', opus: 'audio/ogg', webm: 'audio/webm' };
+
+      function openAdmin() {
+        adminModal.classList.remove('hidden');
+        adminModal.classList.add('flex');
+        if (!admin.vaultKey) setTimeout(() => adminPwdInput.focus(), 50);
+      }
+      function closeAdmin() {
+        if (admin.busy) return;
+        adminModal.classList.add('hidden');
+        adminModal.classList.remove('flex');
+      }
+      function adminLogout() {
+        if (admin.busy) return;
+        Object.assign(admin, { vaultKey: null, repo: null, source: null, files: [], folders: [], prevLib: null, conf: {} });
+        adminWork.classList.add('hidden');
+        adminLogoutBtn.classList.add('hidden');
+        adminLoginForm.classList.remove('hidden');
+        adminRepoLabel.textContent = 'Sin elegir';
+        adminSourceLabel.textContent = 'Sin elegir';
+        adminFolderList.innerHTML = '<p class="text-xs text-slate-500">Elige primero las dos carpetas.</p>';
+        adminLog.textContent = '';
+        adminLog.classList.add('hidden');
+        adminProgressWrap.classList.add('hidden');
+        updatePublishBtn();
+      }
+      function log(msg) {
+        adminLog.classList.remove('hidden');
+        adminLog.textContent += msg + '\n';
+        adminLog.scrollTop = adminLog.scrollHeight;
+      }
+      function setProgress(done, total) {
+        adminProgressWrap.classList.remove('hidden');
+        adminProgressBar.style.width = total ? `${Math.round((done / total) * 100)}%` : '0%';
+      }
+      function updatePublishBtn() {
+        adminPublishBtn.disabled = !(admin.vaultKey && admin.repo && admin.source && admin.files.length) || admin.busy;
+        adminPickSourceBtn.disabled = !admin.repo || admin.busy;
+        adminPickSourceBtn.classList.toggle('opacity-40', !admin.repo);
+      }
+
+      openAdminBtn.addEventListener('click', openAdmin);
+      closeAdminBtn.addEventListener('click', closeAdmin);
+      adminLogoutBtn.addEventListener('click', adminLogout);
+      adminModal.addEventListener('click', e => { if (e.target === adminModal) closeAdmin(); });
+
+      adminLoginForm.addEventListener('submit', async e => {
+        e.preventDefault();
+        if (!cryptoAvailable()) {
+          showToast('Este navegador no tiene cifrado disponible. Usa Chrome o Edge.', 'error');
+          return;
+        }
+        const cfg = (window.FOLDERBEATS_CONFIG || {}).admin;
+        if (!cfg || !cfg.hash) return;
+        adminLoginBtn.disabled = true;
+        adminLoginBtn.textContent = 'Comprobando...';
+        adminLoginError.classList.add('hidden');
+        try {
+          const bits = await pbkdf2Bits(adminPwdInput.value, fromB64(cfg.salt), cfg.iter, 512);
+          if (toB64(bits.slice(0, 32)) !== cfg.hash) {
+            adminLoginError.classList.remove('hidden');
+            return;
+          }
+          admin.vaultKey = await importAesKey(bits.slice(32));
+          adminPwdInput.value = '';
+          adminLoginForm.classList.add('hidden');
+          adminWork.classList.remove('hidden');
+          adminLogoutBtn.classList.remove('hidden');
+          if (!window.showDirectoryPicker) {
+            log('Aviso: este navegador no permite elegir carpetas. Abre la página en Chrome o Edge de tu computadora.');
+          }
+          updatePublishBtn();
+          if (window.lucide) lucide.createIcons();
+        } finally {
+          adminLoginBtn.disabled = false;
+          adminLoginBtn.textContent = 'Entrar';
+        }
+      });
+
+      // --- Ayudantes de archivos (File System Access API) ---
+      async function getDir(root, parts, create) {
+        let d = root;
+        for (const p of parts) d = await d.getDirectoryHandle(p, { create });
+        return d;
+      }
+      async function getFileIn(root, path) {
+        try {
+          const parts = path.split('/');
+          const name = parts.pop();
+          const d = await getDir(root, parts, false);
+          return await (await d.getFileHandle(name)).getFile();
+        } catch (e) { return null; }
+      }
+      async function writeFileIn(root, path, data) {
+        const parts = path.split('/');
+        const name = parts.pop();
+        const d = await getDir(root, parts, true);
+        const fh = await d.getFileHandle(name, { create: true });
+        const w = await fh.createWritable();
+        await w.write(data);
+        await w.close();
+      }
+      async function listFilesIn(dir, prefix = '') {
+        const out = [];
+        for await (const [name, handle] of dir.entries()) {
+          const rel = prefix ? `${prefix}/${name}` : name;
+          if (handle.kind === 'directory') out.push(...await listFilesIn(handle, rel));
+          else out.push({ rel, name, handle, parent: dir });
+        }
+        return out;
+      }
+
+      adminPickRepoBtn.addEventListener('click', async () => {
+        if (!window.showDirectoryPicker) { showToast('Usa Chrome o Edge en tu computadora.', 'error'); return; }
+        let dir;
+        try { dir = await window.showDirectoryPicker({ id: 'mauzi-repo', mode: 'readwrite' }); } catch (e) { return; }
+        try { await dir.getFileHandle('index.html'); } catch (e) {
+          showToast('Esa carpeta no tiene index.html. Elige la carpeta del repositorio.', 'error');
+          return;
+        }
+        admin.repo = dir;
+        admin.source = null;
+        admin.files = [];
+        adminSourceLabel.textContent = 'Sin elegir';
+        adminRepoLabel.textContent = dir.name;
+        admin.prevLib = null;
+        const vaultMap = {};
+        const libFile = await getFileIn(dir, 'biblioteca.json');
+        if (libFile) {
+          try {
+            admin.prevLib = JSON.parse(await libFile.text());
+            const v = admin.prevLib.vault;
+            if (v && v.iv && v.datos) {
+              const plain = await aesDecrypt(admin.vaultKey, fromB64(v.iv), fromB64(v.datos));
+              Object.assign(vaultMap, JSON.parse(TD.decode(plain)));
+            }
+            log(`Configuración anterior leída: ${Object.keys(vaultMap).length} carpeta(s) bloqueada(s).`);
+          } catch (e) {
+            log('No se pudieron leer las contraseñas anteriores de biblioteca.json (se crearán de nuevo).');
+          }
+        }
+        admin.conf = {};
+        Object.entries(vaultMap).forEach(([folder, pwd]) => { admin.conf[folder] = { locked: true, pwd }; });
+        renderAdminFolders();
+        updatePublishBtn();
+      });
+
+      adminPickSourceBtn.addEventListener('click', async () => {
+        if (!admin.repo) return;
+        let dir;
+        try { dir = await window.showDirectoryPicker({ id: 'mauzi-source', mode: 'read' }); } catch (e) { return; }
+        // Seguridad: la música original no puede estar dentro del repositorio (ni al revés)
+        try {
+          if ((await admin.repo.resolve(dir)) !== null || (await dir.resolve(admin.repo)) !== null) {
+            showToast('La carpeta de música debe estar FUERA del repositorio.', 'error');
+            return;
+          }
+        } catch (e) {}
+        adminSourceLabel.textContent = `${dir.name} (leyendo...)`;
+        const all = await listFilesIn(dir);
+        const files = [];
+        for (const f of all) {
+          if (f.rel.split('/').some(p => p.startsWith('.'))) continue;
+          if (!isAudioFile(f.name)) continue;
+          const file = await f.handle.getFile();
+          const parts = f.rel.split('/');
+          parts.pop();
+          files.push({ rel: f.rel, name: f.name, folder: parts.length ? parts.join('/') : 'General', handle: f.handle, size: file.size, mtime: file.lastModified });
+        }
+        admin.source = dir;
+        admin.files = files;
+        const set = new Set();
+        files.forEach(f => {
+          let acc = '';
+          f.folder.split('/').forEach(p => { acc = acc ? `${acc}/${p}` : p; set.add(acc); });
+        });
+        admin.folders = Array.from(set).sort((a, b) => a.localeCompare(b));
+        adminSourceLabel.textContent = `${dir.name} — ${files.length} canciones en ${admin.folders.length} carpeta(s)`;
+        if (!files.length) showToast('No se encontraron canciones en esa carpeta.', 'error');
+        renderAdminFolders();
+        updatePublishBtn();
+      });
+
+      function lockedAncestor(folder) {
+        const parts = folder.split('/');
+        let acc = '';
+        for (let i = 0; i < parts.length - 1; i++) {
+          acc = acc ? `${acc}/${parts[i]}` : parts[i];
+          if (admin.conf[acc] && admin.conf[acc].locked) return acc;
+        }
+        return null;
+      }
+
+      function renderAdminFolders() {
+        if (!admin.folders.length) {
+          adminFolderList.innerHTML = '<p class="text-xs text-slate-500">Elige primero las dos carpetas.</p>';
+          return;
+        }
+        adminFolderList.innerHTML = admin.folders.map(folder => {
+          const depth = folder.split('/').length - 1;
+          const name = folder.split('/').pop();
+          const count = admin.files.filter(f => f.folder === folder || f.folder.startsWith(folder + '/')).length;
+          const c = admin.conf[folder] || { locked: false, pwd: '' };
+          const parent = lockedAncestor(folder);
+          const f = escapeHtml(folder);
+          return `
+            <div class="flex flex-wrap items-center gap-2 rounded-xl border border-blue-500/15 bg-abyss-850/60 px-3 py-2" style="margin-left:${depth * 16}px">
+              <i data-lucide="${parent || c.locked ? 'lock' : 'folder'}" class="w-4 h-4 shrink-0 ${parent || c.locked ? 'text-orange-400' : 'text-blue-400/80'}"></i>
+              <span class="text-sm text-white truncate flex-1 min-w-[120px]">${escapeHtml(name)} <span class="text-[11px] text-slate-500">(${count})</span></span>
+              ${parent
+                ? `<span class="text-[11px] text-orange-300/80">Bloqueada por «${escapeHtml(parent)}»</span>`
+                : `<label class="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer">
+                     <input type="checkbox" data-admin-lock="${f}" ${c.locked ? 'checked' : ''} class="rounded border-blue-500/40 bg-abyss-850 text-orange-500 focus:ring-orange-500" />
+                     ${c.locked ? 'Bloqueada' : 'Libre'}
+                   </label>
+                   ${c.locked ? `<input type="text" data-admin-pwd="${f}" value="${escapeHtml(c.pwd || '')}" placeholder="Contraseña para compartir" class="w-full sm:w-48 bg-abyss-900 border border-blue-500/30 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-orange-500" />` : ''}`
+              }
+            </div>`;
+        }).join('');
+        if (window.lucide) lucide.createIcons();
+      }
+
+      adminFolderList.addEventListener('change', e => {
+        const chk = e.target.closest('[data-admin-lock]');
+        if (!chk) return;
+        const folder = chk.dataset.adminLock;
+        admin.conf[folder] = { ...(admin.conf[folder] || { pwd: '' }), locked: chk.checked };
+        renderAdminFolders();
+        if (chk.checked) {
+          const inp = adminFolderList.querySelector(`[data-admin-pwd="${CSS.escape(folder)}"]`);
+          if (inp) inp.focus();
+        }
+      });
+      adminFolderList.addEventListener('input', e => {
+        const inp = e.target.closest('[data-admin-pwd]');
+        if (!inp) return;
+        const folder = inp.dataset.adminPwd;
+        admin.conf[folder] = { ...(admin.conf[folder] || {}), locked: true, pwd: inp.value };
+      });
+
+      adminPublishBtn.addEventListener('click', async () => {
+        if (admin.busy) return;
+        const roots = admin.folders.filter(f => admin.conf[f] && admin.conf[f].locked && !lockedAncestor(f));
+        for (const r of roots) {
+          const p = (admin.conf[r].pwd || '').trim();
+          if (p.length < 4) { showToast(`Pon una contraseña (mínimo 4 caracteres) a «${r}».`, 'error'); return; }
+          admin.conf[r].pwd = p;
+        }
+        admin.busy = true;
+        updatePublishBtn();
+        adminLog.textContent = '';
+        try {
+          await publishToRepo(roots);
+        } catch (err) {
+          log(`ERROR: ${err && err.message ? err.message : err}`);
+          showToast('Hubo un error. Revisa el registro.', 'error');
+        } finally {
+          admin.busy = false;
+          updatePublishBtn();
+        }
+      });
+
+      async function publishToRepo(roots) {
+        const repo = admin.repo;
+        const musicRoot = ((window.FOLDERBEATS_CONFIG || {}).musicRoot || 'musica').replace(/^\/+|\/+$/g, '');
+        const rootOf = folder => roots.find(r => folder === r || folder.startsWith(r + '/')) || null;
+        const freeFiles = admin.files.filter(f => !rootOf(f.folder));
+        const total = admin.files.length;
+        let done = 0;
+        setProgress(0, total);
+
+        // Contraseñas anteriores (para no volver a cifrar lo que no cambió)
+        let prevVault = {};
+        try {
+          const v = admin.prevLib && admin.prevLib.vault;
+          if (v) prevVault = JSON.parse(TD.decode(await aesDecrypt(admin.vaultKey, fromB64(v.iv), fromB64(v.datos))));
+        } catch (e) {}
+        const prevGroups = (admin.prevLib && admin.prevLib.bloqueadas) || [];
+
+        // 1) Canciones libres -> musica/
+        const libres = [];
+        const keepFree = new Set();
+        for (const f of freeFiles) {
+          const dest = `${musicRoot}/${f.folder}/${f.name}`;
+          keepFree.add(dest);
+          const existing = await getFileIn(repo, dest);
+          if (!existing || existing.size !== f.size) {
+            await writeFileIn(repo, dest, await f.handle.getFile());
+            log(`Copiada (libre): ${f.rel}`);
+          }
+          if (f.size > 95 * 1024 * 1024) log(`AVISO: ${f.rel} pesa más de 95 MB; GitHub no acepta archivos de más de 100 MB.`);
+          libres.push({ title: cleanTitle(f.name), folder: f.folder, path: dest });
+          setProgress(++done, total);
+        }
+
+        // 2) Carpetas bloqueadas -> privado/ (cifradas)
+        const bloqueadas = [];
+        const keepEnc = new Set();
+        for (const root of roots) {
+          const pwd = admin.conf[root].pwd;
+          const prev = prevGroups.find(g => g.nombre === root);
+          const reuse = Boolean(prev && prevVault[root] === pwd);
+          const salt = reuse ? prev.salt : toB64(randomBytes(16));
+          const raw = await folderRawKey(pwd, salt, FOLDER_ITER);
+          const key = await importAesKey(raw);
+          let prevList = [];
+          if (reuse) {
+            try { prevList = JSON.parse(TD.decode(await aesDecrypt(key, fromB64(prev.iv), fromB64(prev.datos)))); } catch (e) {}
+          }
+          const list = [];
+          for (const f of admin.files.filter(x => rootOf(x.folder) === root)) {
+            const fileId = (await sha256Hex(`${salt}|${f.rel}`)).slice(0, 32);
+            keepEnc.add(`${fileId}.bin`);
+            const old = prevList.find(p => p.src === f.rel && p.size === f.size && p.mtime === f.mtime && p.file === fileId);
+            const ext = f.name.split('.').pop().toLowerCase();
+            if (old && await getFileIn(repo, `privado/${fileId}.bin`)) {
+              list.push(old);
+            } else {
+              const data = new Uint8Array(await (await f.handle.getFile()).arrayBuffer());
+              const { iv, ct } = await aesEncrypt(key, data);
+              await writeFileIn(repo, `privado/${fileId}.bin`, ct);
+              list.push({ title: cleanTitle(f.name), folder: f.folder, file: fileId, iv: toB64(iv), type: MIME_BY_EXT[ext] || '', size: f.size, mtime: f.mtime, src: f.rel });
+              log(`Cifrada (bloqueada): ${f.rel}`);
+            }
+            if (f.size > 95 * 1024 * 1024) log(`AVISO: ${f.rel} pesa más de 95 MB; GitHub no acepta archivos de más de 100 MB.`);
+            setProgress(++done, total);
+          }
+          const { iv, ct } = await aesEncrypt(key, TE.encode(JSON.stringify(list)));
+          bloqueadas.push({ id: (await sha256Hex(`g|${root}`)).slice(0, 16), nombre: root, salt, iter: FOLDER_ITER, iv: toB64(iv), datos: toB64(ct) });
+        }
+
+        // 3) Limpieza: quitar del repositorio lo que ya no debe estar
+        const stamp = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+        let retired = 0;
+        try {
+          const musicDir = await repo.getDirectoryHandle(musicRoot);
+          for (const f of await listFilesIn(musicDir, musicRoot)) {
+            if (!isAudioFile(f.name) || keepFree.has(f.rel)) continue;
+            // No se borra: se mueve a _respaldo (que no se sube a GitHub)
+            await writeFileIn(repo, `_respaldo/retirados-${stamp}/${f.rel}`, await f.handle.getFile());
+            await f.parent.removeEntry(f.name);
+            retired++;
+            log(`Retirada del repositorio (guardada en _respaldo): ${f.rel}`);
+          }
+        } catch (e) {}
+        try {
+          const privDir = await repo.getDirectoryHandle('privado');
+          for await (const [name, handle] of privDir.entries()) {
+            if (handle.kind === 'file' && name.endsWith('.bin') && !keepEnc.has(name)) await privDir.removeEntry(name);
+          }
+        } catch (e) {}
+
+        // 4) Que _respaldo nunca se suba
+        const gi = await getFileIn(repo, '.gitignore');
+        const giText = gi ? await gi.text() : '';
+        if (!/^_respaldo\/?\s*$/m.test(giText)) {
+          await writeFileIn(repo, '.gitignore', (giText && !giText.endsWith('\n') ? giText + '\n' : giText) + '_respaldo/\n');
+        }
+
+        // 5) Contraseñas guardadas cifradas con la clave del admin + biblioteca.json
+        const vaultMap = {};
+        roots.forEach(r => { vaultMap[r] = admin.conf[r].pwd; });
+        const vEnc = await aesEncrypt(admin.vaultKey, TE.encode(JSON.stringify(vaultMap)));
+        const lib = {
+          version: 2,
+          generado: new Date().toISOString(),
+          libres,
+          bloqueadas,
+          vault: { iv: toB64(vEnc.iv), datos: toB64(vEnc.ct) }
+        };
+        await writeFileIn(repo, 'biblioteca.json', JSON.stringify(lib, null, 2));
+        admin.prevLib = lib;
+        setProgress(total, total);
+        log(`\nLISTO: ${libres.length} libres, ${total - libres.length} protegidas en ${roots.length} carpeta(s)${retired ? `, ${retired} retiradas` : ''}.`);
+        log('Ahora sube los cambios a GitHub (GitHub Desktop: Commit y Push).');
+        showToast('Repositorio actualizado. Súbelo a GitHub.', 'success');
+      }
+
+      window.addEventListener('keydown', e => {
+        if (e.code === 'Space' && !['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) {
+          e.preventDefault();
+          togglePlayPause();
+        }
+      });
+
+      (async function init() {
+        drawVisualizer();
+        // Interfaz disponible sin internet (service worker)
+        if ('serviceWorker' in navigator && window.location.protocol.startsWith('http')) {
+          navigator.serviceWorker.register('./sw.js').catch(() => {});
+        }
+        // Pide al navegador que no borre las canciones guardadas
+        try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+        await openOfflineDB();
+
+        const loadedHosted = await tryAutoLoadHostedMusic();
+        if (!loadedHosted) {
+          const cached = (await loadOfflineTracksFromDB()).filter(item => !item.enc);
+          if (cached.length > 0) {
+            state.tracks = cached.map(item => {
+              const url = URL.createObjectURL(item.blob);
+              state.objectUrls.push(url);
+              const top = (item.folder || '').split('/')[0];
+              if (top) state.expandedFolders.add(top);
+              return {
+                id: item.id,
+                title: item.title,
+                folder: item.folder,
+                url,
+                duration: item.duration,
+                isLocal: true,
+                isDemo: false,
+                cachedOffline: true,
+                relPath: item.relPath
+              };
+            });
+            state.sourceLabel = `Offline guardado (${cached.length})`;
+            state.activeFolder = 'ALL';
+            updateOfflineCounter();
+            renderAll();
+            const visible = getFilteredTracks();
+            if (visible.length > 0) loadTrack(visible[0].id, false);
+          } else {
+            loadDemoLibrary();
+          }
+        }
+      })();
+    })();
+  </script>
+</body>
+</html>
